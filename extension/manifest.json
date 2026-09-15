@@ -29,7 +29,14 @@
     "*://app.notion.com/*",
     "*://www.notion.so/*",
     "*://notion.so/*",
-    "*://app.hey.com/*"
+    "*://app.hey.com/*",
+    "*://www.youtube.com/*",
+    "*://m.youtube.com/*",
+    "*://music.youtube.com/*",
+    "*://mail.proton.me/*",
+    "*://mail.protonmail.com/*",
+    "*://app.protonmail.com/*",
+    "*://teams.microsoft.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -51,7 +58,14 @@
         "*://app.notion.com/*",
         "*://www.notion.so/*",
         "*://notion.so/*",
-        "*://app.hey.com/*"
+        "*://app.hey.com/*",
+        "*://www.youtube.com/*",
+        "*://m.youtube.com/*",
+        "*://music.youtube.com/*",
+        "*://mail.proton.me/*",
+        "*://mail.protonmail.com/*",
+        "*://app.protonmail.com/*",
+        "*://teams.microsoft.com/*"
       ],
       "js": [
         "inject-prefers-color-scheme.js"
@@ -169,6 +183,49 @@
       ],
       "js": [
         "hey.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "*://www.youtube.com/*",
+        "*://m.youtube.com/*",
+        "*://music.youtube.com/*"
+      ],
+      "js": [
+        "omarchy-colors.js",
+        "omarchy-surfaces.js",
+        "omarchy-runtime.js",
+        "youtube.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "*://mail.proton.me/*",
+        "*://mail.protonmail.com/*",
+        "*://app.protonmail.com/*"
+      ],
+      "js": [
+        "omarchy-colors.js",
+        "omarchy-surfaces.js",
+        "omarchy-runtime.js",
+        "protonmail.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "*://teams.microsoft.com/*"
+      ],
+      "js": [
+        "omarchy-colors.js",
+        "omarchy-surfaces.js",
+        "omarchy-runtime.js",
+        "teams.js"
       ],
       "run_at": "document_start",
       "all_frames": false

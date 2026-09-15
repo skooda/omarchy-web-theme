@@ -11,7 +11,10 @@ pack — repaints chrome/sidebar/message pane and auto-flips Slack's Light/Dark
 Color Mode), WhatsApp Web (`whatsapp.js`, declarative), GitHub (`github.js`,
 declarative Primer tokens), Linear (`linear.js`), Discord (`discord.js`),
 Outlook Web (`outlook.js`, Fluent v9 tokens), Notion (`notion.js`,
-`--c-`/`--ca-` tokens + a Prism syntax palette), and HEY email + calendar
+`--c-`/`--ca-` tokens + a Prism syntax palette), YouTube (`youtube.js`), Proton
+Mail (`protonmail.js`), Microsoft Teams (`teams.js`, Fluent v9 with the
+Teams-specific `colorDefault*`/`colorTeamsBrand1*` families), and
+HEY email + calendar
 (`hey.js`, one pack for both). A **bash
 native-messaging host** reads the active Omarchy theme from
 `~/.local/state/omarchy/current/` and pushes theme changes to the extension
@@ -193,6 +196,33 @@ script.
     family → the palette colour farthest from every already-taken role → the
     accent. The distance scan is explicit because `highlightColor()` avoids only
     ONE colour and kept handing back the colour already used for `negative`.
+  - `youtube.js` — **the YouTube pack**: maps the Material 3 baseline roles
+    (`--yt-sys-color-baseline-*`) to the derived surfaces; the old `--yt-spec-*`
+    set is gone, and a live audit found zero triplet composition, so ~22 tokens
+    are a plain table. Its small `apply()` hook exists for one thing tokens can't
+    reach: YouTube paints the root canvas (`<html>`, visible at overscroll and
+    during pre-hydration) from the hardcoded literal `#0f0f0f`, never the
+    base-background token, so it paints that canvas from `s.bg` inline-important.
+    Needs YouTube Appearance → "device theme" (the default); pinned Light/Dark
+    breaks the shim's polarity swap.
+  - `protonmail.js` — **the Proton Mail pack**: Proton uses its own `--n-*`
+    scalar tokens (Color Elevation), pure real colours (zero triplet
+    composition), so it's a plain token table. Its small `apply()` hook paints
+    the local-storage cached background (Proton's app-shell favicon/#2c2c2c
+    pre-hydration flash) from `s.bg`.
+  - `teams.js` — **the Microsoft Teams pack**: Fluent v9 ships colors only via
+    the `.fui-FluentProvider` hashed-class rule (~404 real-colour tokens, no
+    triplets), so it's a plain table (~140 keys) extending the Outlook ladder
+    with the Teams-specific families — `colorDefault*` (its rail token
+    `--colorDefaultBackground7` repaints the left nav), `colorTeamsBrand1*`,
+    `colorTeamsNeutralStrokeSubtleAlpha` — plus the `<html>` pre-boot shell vars
+    (`--themeBackgroundColor`, `--themeTitleBar*`, `--themeLoadingScreenColor`,
+    `--backgroundCanvas`, …) to kill the white flash before hydration. Status =
+    Danger/Success/Warning only (Fluent v9 has no Info). `colorPalette*`, the
+    polarity-inverting family, shadows/`colorBackgroundOverlay` and geometry
+    tokens are intentionally not mapped. Like youtube.js/protonmail.js it's
+    loaded in a SINGLE content-script entry with the engine files (Chromium
+    152's independent entries inject in arbitrary order, which crashed the pack).
   - `background.js` — MV3 service worker. Holds the native-messaging port,
     rebroadcasts pushed themes to matched tabs (the site list is derived from
     the manifest's content-script matches — adding a pack never touches this

@@ -13,6 +13,9 @@ const SITES = [
   { id: "outlook", label: "Outlook", host: "outlook.office.com" },
   { id: "notion", label: "Notion", host: "app.notion.com" },
   { id: "hey", label: "HEY + Calendar", host: "app.hey.com" },
+  { id: "youtube", label: "YouTube", host: "www.youtube.com" },
+  { id: "protonmail", label: "Proton Mail", host: "mail.proton.me" },
+  { id: "teams", label: "Microsoft Teams", host: "teams.microsoft.com" },
 ];
 
 const container = document.getElementById("sites");
