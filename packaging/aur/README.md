@@ -3,12 +3,13 @@
 The `omarchy-web-theme` AUR package. This directory is a straight copy of
 what lives in the AUR git repo, so publishing is `cp` + `git push`.
 
-> **Renamed from `omarchy-slack-theme` after 0.2.x**, when the extension grew
-> packs for more sites than Slack. The PKGBUILD carries
-> `replaces/conflicts/provides=('omarchy-slack-theme')` so pacman migrates
-> existing installs, and `omarchy-web-theme-setup` cleans up the old name's
-> per-user wiring. The old AUR package should get a final pinned comment
-> pointing here and then be orphaned/deleted.
+> **Renamed twice**: `omarchy-slack-theme` through 0.2.x, then
+> `omarchy-webapp-theme` through 0.3.x (when the extension grew one pack per
+> site), now `omarchy-web-theme` (the universal recolor engine). The PKGBUILD
+> carries `replaces/conflicts/provides` for both old names so pacman migrates
+> existing installs, and `omarchy-web-theme-setup` cleans up their per-user
+> wiring. The old AUR packages should each get a final pinned comment pointing
+> here and then be orphaned/deleted.
 
 ## What the package does and doesn't do
 
@@ -38,13 +39,13 @@ The checksum can't be computed until the tag is published, so the order matters:
 1. Bump `version` in `extension/manifest.json` and `pkgver` here. Keep them equal.
 2. Merge to `main`, then tag and push:
    ```sh
-   git tag -a v0.3.0 -m "v0.3.0 — ..." && git push origin v0.3.0
+   git tag -a v0.4.0 -m "v0.4.0 — ..." && git push origin v0.4.0
    ```
 3. Update the checksum from the now-published archive:
    ```sh
-   curl -sSL -o /tmp/v0.3.0.tar.gz \
-     https://github.com/skooda/omarchy-web-theme/archive/refs/tags/v0.3.0.tar.gz
-   sha256sum /tmp/v0.3.0.tar.gz
+   curl -sSL -o /tmp/v0.4.0.tar.gz \
+     https://github.com/skooda/omarchy-web-theme/archive/refs/tags/v0.4.0.tar.gz
+   sha256sum /tmp/v0.4.0.tar.gz
    ```
 4. **Regenerate `.SRCINFO`** — the AUR rejects pushes where it disagrees with the
    PKGBUILD, and it's the easiest thing to forget:
