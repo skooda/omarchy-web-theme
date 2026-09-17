@@ -259,6 +259,12 @@ remove_legacy() {
       cleaned=1
     done
   done
+  for host in "${LEGACY_HOSTS[@]}"; do
+    if [[ -f "$FIREFOX_HOST_DIR/$host.json" ]]; then
+      rm -f "$FIREFOX_HOST_DIR/$host.json"
+      cleaned=1
+    fi
+  done
   for marker in "${LEGACY_MARKERS[@]}"; do
     if [[ -L "$HOOKS_DIR/theme-set.d/$marker" || -f "$HOOKS_DIR/theme-set.d/$marker" ]]; then
       rm -f "$HOOKS_DIR/theme-set.d/$marker"

@@ -42,8 +42,12 @@ done
 ./build-firefox.sh
 
 if [[ ${#PROFILE_ARGS[@]} -eq 0 ]]; then
-  echo "→ temp profile: no native-messaging host there, so the extension will"
-  echo "  inject but stay unthemed. Use -p <your profile> to test for real."
+  # Native-messaging hosts are per-user (~/.mozilla/native-messaging-hosts), not
+  # per-profile, so a temp profile still reaches the host install.sh registered —
+  # the extension themes normally. It just has none of your logins/history; use
+  # -p <your profile> when you need a signed-in session.
+  echo "→ temp profile: uses the per-user native-messaging host, so theming works."
+  echo "  No logins/history there — use -p <your profile> for a signed-in session."
 fi
 
 exec npx --yes web-ext run \
