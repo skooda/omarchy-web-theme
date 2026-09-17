@@ -130,16 +130,24 @@ SIGN_ARGS=(
 [[ -n "${FX_AMO_METADATA:-}" ]] && SIGN_ARGS+=(--amo-metadata "$FX_AMO_METADATA")
 
 mkdir -p "$SIGN_DIR"
+SIGN_LOG="$DIST_DIR/web-ext-sign.log"
 echo "Signing $ADDON_ID $VERSION as $CHANNEL..."
-if ! npx --yes web-ext sign "${SIGN_ARGS[@]}"; then
-  if [[ $CHANNEL == listed ]]; then
+set +e
+npx --yes web-ext sign "${SIGN_ARGS[@]}" 2>&1 | tee "$SIGN_LOG"
+sign_status=${PIPESTATUS[0]}
+set -e
+if ((sign_status != 0)); then
+  # With FX_APPROVAL_TIMEOUT=0 (or a review that outlasts the timeout) web-ext
+  # exits non-zero on "Approval: timeout exceeded" even though the version WAS
+  # submitted. Any other failure — a rejected manifest, bad metadata (HTTP 400),
+  # auth error — must not be dressed up as "submitted".
+  if [[ $CHANNEL == listed ]] && grep -qi "timeout exceeded" "$SIGN_LOG"; then
     echo
-    echo "Submitted, but not signed yet — a listed version waits for AMO review." >&2
-    echo "Track it at https://addons.mozilla.org/developers/addons/ ; the signed" >&2
-    echo "XPI downloads there when review passes (re-run with" >&2
-    echo "FX_APPROVAL_TIMEOUT=0 to submit without waiting)." >&2
+    echo "Submitted — a listed version waits for AMO review before it is signed." >&2
+    echo "Track it at https://addons.mozilla.org/developers/addons/" >&2
     exit 0
   fi
+  echo "Signing failed (full log: $SIGN_LOG)." >&2
   exit 1
 fi
 

@@ -63,8 +63,8 @@ through the native host and makes no network requests of its own.
 
 ## Categories
 
-- Appearance
-- Other
+- Appearance only. AMO rejects `other` combined with any other category, and a
+  single primary category is all this needs.
 
 ## Tags
 
