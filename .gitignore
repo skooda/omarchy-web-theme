@@ -22,3 +22,10 @@ __pycache__/
 # on the Chrome Web Store — losing it forfeits that ability permanently, so keep
 # a backup somewhere outside the repo.
 *.pem
+
+# Release build artifacts (build-firefox.sh / sign-firefox.sh).
+build/
+dist/
+
+# AMO API credentials for sign-firefox.sh — never commit these.
+.env

@@ -1,42 +1,27 @@
 {
   "manifest_version": 3,
-  "name": "Omarchy Web App Theme",
-  "version": "0.3.6",
+  "name": "Omarchy Web Theme",
+  "version": "0.4.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "omarchy-web-theme@omarchy.dev",
+      "strict_min_version": "128.0"
+    }
+  },
   "icons": {
     "16": "icon-16.png",
     "32": "icon-32.png",
     "48": "icon-48.png",
     "128": "icon-128.png"
   },
-  "description": "Make web apps (Slack, WhatsApp, ...) follow the current Omarchy theme: palette, light/dark, and accent.",
+  "description": "Make any website follow the current Omarchy theme: palette, light/dark, and accent.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArJSIwQv/78rvsaA9dVcTZe+lO4JPxjYFOazJiLCsGt7Rp4L6fQy7G6Wllteg/ueE2qWO7NDs0wmNkchE0xjqsPU3BQCzzNM6hevscKdZ0k8QXbEr4L+C+jwC/VPkD73soaKQncnDWtGsA9VLVIom6wWkr0qcop7QNE1+wXdx/n7b/5v192/STiunFMuUNLpEiYzWMwQZtydVtRms1jJvSHE7C9ye9QT6z/dTYJs9LeyREI5HNxzhUMIeWlh44QS6jlf40jnsTJvXJ6FJedQ3C0FhD9i6Tw7+/+XgtU64dQJ2RahP8SpsfHD6TTh4Tfnnw1D6zjjaPyi8pn1DY7nHiQIDAQAB",
   "permissions": [
     "nativeMessaging",
     "storage"
   ],
   "host_permissions": [
-    "*://app.slack.com/*",
-    "*://web.whatsapp.com/*",
-    "*://github.com/*",
-    "*://gist.github.com/*",
-    "*://linear.app/*",
-    "*://*.linear.app/*",
-    "*://discord.com/*",
-    "*://outlook.office.com/*",
-    "*://outlook.office365.com/*",
-    "*://outlook.live.com/*",
-    "*://outlook.cloud.microsoft/*",
-    "*://app.notion.com/*",
-    "*://www.notion.so/*",
-    "*://notion.so/*",
-    "*://app.hey.com/*",
-    "*://www.youtube.com/*",
-    "*://m.youtube.com/*",
-    "*://music.youtube.com/*",
-    "*://mail.proton.me/*",
-    "*://mail.protonmail.com/*",
-    "*://app.protonmail.com/*",
-    "*://teams.microsoft.com/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
@@ -44,28 +29,7 @@
   "content_scripts": [
     {
       "matches": [
-        "*://app.slack.com/*",
-        "*://web.whatsapp.com/*",
-        "*://github.com/*",
-        "*://gist.github.com/*",
-        "*://linear.app/*",
-        "*://*.linear.app/*",
-        "*://discord.com/*",
-        "*://outlook.office.com/*",
-        "*://outlook.office365.com/*",
-        "*://outlook.live.com/*",
-        "*://outlook.cloud.microsoft/*",
-        "*://app.notion.com/*",
-        "*://www.notion.so/*",
-        "*://notion.so/*",
-        "*://app.hey.com/*",
-        "*://www.youtube.com/*",
-        "*://m.youtube.com/*",
-        "*://music.youtube.com/*",
-        "*://mail.proton.me/*",
-        "*://mail.protonmail.com/*",
-        "*://app.protonmail.com/*",
-        "*://teams.microsoft.com/*"
+        "<all_urls>"
       ],
       "js": [
         "inject-prefers-color-scheme.js"
@@ -76,156 +40,10 @@
     },
     {
       "matches": [
-        "*://app.slack.com/*",
-        "*://web.whatsapp.com/*",
-        "*://github.com/*",
-        "*://gist.github.com/*",
-        "*://linear.app/*",
-        "*://*.linear.app/*",
-        "*://discord.com/*",
-        "*://outlook.office.com/*",
-        "*://outlook.office365.com/*",
-        "*://outlook.live.com/*",
-        "*://outlook.cloud.microsoft/*",
-        "*://app.notion.com/*",
-        "*://www.notion.so/*",
-        "*://notion.so/*",
-        "*://app.hey.com/*"
+        "<all_urls>"
       ],
       "js": [
-        "omarchy-colors.js",
-        "omarchy-surfaces.js",
-        "omarchy-runtime.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": [
-        "*://app.slack.com/*"
-      ],
-      "js": [
-        "content.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": [
-        "*://web.whatsapp.com/*"
-      ],
-      "js": [
-        "whatsapp.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": [
-        "*://github.com/*",
-        "*://gist.github.com/*"
-      ],
-      "js": [
-        "github.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": [
-        "*://linear.app/*",
-        "*://*.linear.app/*"
-      ],
-      "js": [
-        "linear.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": [
-        "*://discord.com/*"
-      ],
-      "js": [
-        "discord.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": [
-        "*://outlook.office.com/*",
-        "*://outlook.office365.com/*",
-        "*://outlook.live.com/*",
-        "*://outlook.cloud.microsoft/*"
-      ],
-      "js": [
-        "outlook.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": [
-        "*://app.notion.com/*",
-        "*://www.notion.so/*",
-        "*://notion.so/*"
-      ],
-      "js": [
-        "notion.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": [
-        "*://app.hey.com/*"
-      ],
-      "js": [
-        "hey.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": [
-        "*://www.youtube.com/*",
-        "*://m.youtube.com/*",
-        "*://music.youtube.com/*"
-      ],
-      "js": [
-        "omarchy-colors.js",
-        "omarchy-surfaces.js",
-        "omarchy-runtime.js",
-        "youtube.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": [
-        "*://mail.proton.me/*",
-        "*://mail.protonmail.com/*",
-        "*://app.protonmail.com/*"
-      ],
-      "js": [
-        "omarchy-colors.js",
-        "omarchy-surfaces.js",
-        "omarchy-runtime.js",
-        "protonmail.js"
-      ],
-      "run_at": "document_start",
-      "all_frames": false
-    },
-    {
-      "matches": [
-        "*://teams.microsoft.com/*"
-      ],
-      "js": [
-        "omarchy-colors.js",
-        "omarchy-surfaces.js",
-        "omarchy-runtime.js",
-        "teams.js"
+        "omarchy-universal.js"
       ],
       "run_at": "document_start",
       "all_frames": false
@@ -236,7 +54,7 @@
     "open_in_tab": false
   },
   "action": {
-    "default_title": "Omarchy Web App Theme",
+    "default_title": "Omarchy Web Theme",
     "default_icon": {
       "16": "icon-16.png",
       "32": "icon-32.png",

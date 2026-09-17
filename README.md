@@ -1,110 +1,129 @@
-# omarchy-webapp-theme
+# omarchy-web-theme
 
-A tiny browser extension that makes web apps — **Slack, WhatsApp Web, GitHub,
-Linear, Discord, Outlook, Notion, and HEY** — follow your [Omarchy](https://omarchy.org/)
-theme: painting their surfaces with your terminal's palette and flipping their
-Light/Dark mode whenever you switch omarchy themes, so they visually blend into
-the rest of your desktop.
+A browser extension that makes **any website** follow your
+[Omarchy](https://omarchy.org/) theme — repainting its surfaces with your
+terminal's palette, keeping text readable, and switching light/dark whenever you
+switch omarchy themes.
 
-Built and tested on Brave on Arch Linux + Omarchy. Works on Brave Origin,
-Chrome, Chromium, and Edge.
+Built and tested on Brave and Firefox on Arch Linux + Omarchy. Works on Chromium,
+Chrome, Brave Origin, Edge, and Firefox.
 
-> Known as `omarchy-slack-theme` through 0.2.x, back when Slack was the only
-> pack.
+```sh
+./install.sh          # Chromium-family: host + hook + --load-extension
+./sign-firefox.sh     # Firefox: signed, self-distributed XPI
+```
+
+## Provenance
+
+This is a fork of Scott Jones' **`omarchy-webapp-theme`** (originally
+`omarchy-slack-theme`), which showed the way: a tiny native-messaging host can
+hook omarchy's own `theme-set` event and push the new theme into a browser
+extension the moment it lands. That project themed a curated list of web apps
+with one small "pack" per site — Slack, WhatsApp Web, GitHub, Linear, Discord,
+Outlook, Notion, HEY.
+
+We wanted that engine to work on the **whole web**, not just those apps, so this
+fork throws the per-site packs away and replaces them with one site-agnostic
+recoloring engine. The native host, the hook, and the ID-pinning scheme are
+Scott's design; the universal recolor engine is ours. Huge thanks to him.
 
 ## What it does
 
-- **Main pane background** matches your terminal's background (read from the
-  active theme's `alacritty.toml`).
-- **Sidebar, top nav, channel header** are tinted to match your terminal
-  color (a couple of shades off so they're visually distinct from the chat).
-- **Slack's Light/Dark Color Mode** flips automatically when you switch
-  themes — the extension opens Preferences → Appearance, picks the right
-  radio, and closes the dialog (all hidden from view).
-- **Pushes updates instantly** when you switch themes. A small
-  native-messaging host hooks into omarchy's own `theme-set` event and pushes
-  the new state to the extension the moment the theme lands.
-- **Not just Slack**: the extension is a theme engine plus one small "pack" per
-  site. WhatsApp Web (surfaces, bubbles, unread badges, and even default
-  avatars recolored from your terminal palette), GitHub (Primer design tokens),
-  Linear (sidebar + elevation ladder), Discord, Outlook Web (Fluent v9
-  tokens), Notion (surfaces, body copy, and code-block syntax highlighting
-  drawn from your terminal palette), and HEY (email + calendar in one pack) ship
-  too — adding another site is one pack file + one manifest entry.
-
-https://github.com/user-attachments/assets/5c67741e-c6df-4f48-8c1a-72eadcc805bb
+- **Recolors any page** from your current omarchy palette: backgrounds, borders
+  and shadows come from the theme's surfaces; text, icons and links from its
+  inks; saturated colors (links, buttons, status) keep their hue by matching
+  against the theme's chromatic slots.
+- **Preserves roles and polarity.** A page's background stays a background and
+  its text stays text, even when the page's own light/dark mode disagrees with
+  the theme (sites that switch on the CSS `prefers-color-scheme` query, which no
+  content script can spoof).
+- **Enforces a contrast floor.** After mapping, every element's ink is checked
+  against the surface it actually sits on and repaired to at least 4.5:1
+  (WCAG AA), preferring the theme's own colors over literal black/white.
+- **Pushes updates instantly.** A native-messaging host reads the active theme
+  and is signalled by omarchy's `theme-set` hook, so switching themes repaints
+  open tabs immediately — no reload, no polling.
+- **Can be turned off.** The options page has a single master switch; disabled
+  sites are left exactly as they ship.
 
 ## How it works
 
 ```
-  omarchy-theme-set ──omarchy-hook theme-set──► hooks/omarchy-webapp-theme
+  omarchy-theme-set ──omarchy-hook theme-set──► hooks/omarchy-web-theme
                                                           │ SIGUSR1
                                                           ▼
 ┌──────────────┐   length-prefixed JSON   ┌────────────────────┐
 │  native host │ ────────────────────────►│  Browser service   │
 │  (bash)      │   push-only, never read  │  worker (MV3 bg)   │
 │              │                          └────────┬───────────┘
-└──────────────┘                                   │ chrome.tabs.sendMessage
+└──────────────┘                                   │ tabs.sendMessage
    reads (Omarchy 4):                              ▼
-   ~/.local/state/omarchy/current/  ┌────────────────────────────┐
-     theme.name                     │  Content script on Slack   │
-     theme/alacritty.toml           │  • injects themed CSS      │
-     theme/colors.toml              │  • drives the Appearance   │
-     theme/chromium.theme           │    radio via Preferences   │
-                                    │    modal automation        │
-                                    └────────────────────────────┘
+   ~/.local/state/omarchy/current/  ┌────────────────────────────────┐
+     theme.name                     │  Content script on every page  │
+     theme/alacritty.toml           │  • maps CSSOM + inline colors  │
+     theme/colors.toml              │  • ensures contrast            │
+     theme/chromium.theme           └────────────────────────────────┘
 ```
 
 The host is **push-only** — it never parses inbound messages. It emits once on
 connect, then again whenever omarchy's `theme-set` hook signals it with SIGUSR1
 (the hook `install.sh` symlinks into `hooks/theme-set.d/`). Omarchy 4+ only.
 
-Slack's Color Mode is flipped by:
+Dark vs. light is decided by the **WCAG relative luminance** of the terminal
+background, so it's robust to themes that don't use the obvious day/night naming.
 
-1. Clicking the workspace-actions button (`[data-qa="workspace_actions_button"]`)
-2. Clicking the "Preferences" menu item
-3. Clicking the Appearance tab in the prefs dialog
-4. Calling React's `onChange` directly on the hidden `<input type="radio">`
-   for Light/Dark, via a MAIN-world bridge script (Slack's React handler
-   doesn't fire reliably for synthetic mouse events)
-5. Closing the dialog via the X button
-6. Dismissing any leftover open menus with Escape
+### The recoloring engine, briefly
 
-Dark/Light is decided by **WCAG relative luminance** of the terminal
-background — robust to themes that don't use the obvious day/night naming
-(e.g. an Omarchy "day" theme that happens to use a dark palette).
+`extension/omarchy-universal.js` is the whole thing (no build step, vanilla JS):
+
+- The theme palette is split into three disjoint target sets: **surfaces**
+  (background/selection/chrome + derived `mix(bg, fg)` elevation rungs), **inks**
+  (foreground/muted + derived muting rungs), and **chromatic** (ANSI + accent).
+- A declaration's **property** picks the neutral group (`color` → ink,
+  `background`/`border`/`shadow` → surface). Custom properties have no declared
+  role, so their **name** is read back (`--bg*`, `--*-surface`, `--*-border` vs
+  `--fg*`, `--*-text`, `--*-icon`); only truly nameless ones fall back to a
+  neutral union.
+- A saturated source color is matched within the **chromatic** set by **hue**, so
+  blue stays blue-ish even when the palette has no blue.
+- Neutral matches are **polarity-aware**: when the page's implied light/dark
+  disagrees with the theme's, the color is anchored on the theme's own `bg`/`fg`
+  instead of the far end of the ladder — which is what stops a dark page under a
+  light theme from inverting.
+- A **contrast pass** repairs anything under 4.5:1 via the theme's ink ladder,
+  falling back to `theme.bg` on saturated fills and only then to white/black.
+
+Colors are parsed through a canvas `fillStyle`, with modern color functions
+(`oklab()`/`color()`) rasterized to a pixel so they resolve to real sRGB.
 
 ## Requirements
 
-- Brave, Brave Origin, Chrome, Chromium, or Edge — Manifest V3
-- Bash + coreutils. No Python, no runtime dependencies.
+- Brave, Brave Origin, Chrome, Chromium, or Edge (Manifest V3) — or Firefox 128+
+- Bash + coreutils. No Python, no runtime dependencies for the extension itself.
 - Linux + [Omarchy](https://omarchy.org/) **4+** — the host reads
   `~/.local/state/omarchy/current/` and is driven by the `theme-set.d` hook.
 - An `alacritty.toml` in the active theme dir (the host falls back to
-  `colors.toml` if that's missing)
+  `colors.toml` if that's missing).
 
 ## Install
 
 ### From the AUR
 
 ```sh
-yay -S omarchy-webapp-theme
-omarchy-webapp-theme-setup
+yay -S omarchy-web-theme
+omarchy-web-theme-setup
 ```
 
 The package registers the native-messaging host system-wide, so there's no
-per-browser setup. `omarchy-webapp-theme-setup` does the two things a package
-can't — installing the omarchy `theme-set` hook and adding `--load-extension` —
-because both live under `$HOME`. It takes the same `--no-flags` and
-`--uninstall` flags as `install.sh` below; they're the same script. (Upgrading
-from `omarchy-slack-theme`? The setup cleans up the old name's wiring too.)
+per-browser setup. `omarchy-web-theme-setup` does the two things a package can't
+— installing the omarchy `theme-set` hook and adding `--load-extension` —
+because both live under `$HOME`. It takes the same `--no-flags` and `--uninstall`
+flags as `install.sh` below; they're the same script. (Upgrading from
+`omarchy-webapp-theme` or `omarchy-slack-theme`? The setup cleans up the old
+names' wiring too.)
 
-Then fully quit your browser and open any supported site — `app.slack.com`,
-`web.whatsapp.com`, `github.com`, `linear.app`, `discord.com`,
-`outlook.office.com`, `app.notion.com`, or `app.hey.com`.
-
-Then see **[Per-site setup](#per-site-setup)** for the appearance setting a
-few apps need, and for the extension options that turn theming off per site.
+Then **fully quit your browser** (`pkill brave` — closing the window isn't
+enough) and open any website.
 
 ### From a git checkout
 
@@ -125,13 +144,6 @@ The script does three things:
 3. Adds `--load-extension` to the flags files of the browsers you actually have
    installed, so the extension loads without Developer mode.
 
-Then **fully quit your browser** (`pkill brave` — closing the window isn't
-enough) and open a supported site.
-
-> **Upgrading from a manual install?** Remove the copy you loaded via
-> **Load unpacked** first. It shares the now-pinned ID with the
-> `--load-extension` copy, and only one of the two will load.
-
 Options:
 
 | Flag | Effect |
@@ -139,122 +151,125 @@ Options:
 | `--no-flags` | Skip the flags-file edits; load `extension/` by hand instead. |
 | `--uninstall` | Reverse all three steps. |
 
-## Per-site setup
+> **Upgrading from a manual install?** Remove the copy you loaded via
+> **Load unpacked** first, then restart. It and the `--load-extension` copy share
+> the pinned ID, and only one of the two will load.
 
-Most packs follow your omarchy theme as soon as you open the site. A few apps
-have their own Light/Dark setting, and while that's pinned they ignore the
-extension — the palette changes, the polarity doesn't. Put those on "system":
+### Firefox (self-distributed, signed)
 
-| Site | Setting | Where |
+Firefox Release refuses unsigned add-ons, so the Firefox build gets signed
+**unlisted**: AMO signs it but never lists it in the marketplace, and the signed
+XPI is handed out from GitHub Releases. `install.sh` already registers the
+Firefox native-messaging host under `~/.mozilla/native-messaging-hosts/`.
+
+```sh
+./sign-firefox.sh --package   # builds dist/omarchy-web-theme.xpi (unsigned)
+```
+
+1. Create an [AMO account](https://addons.mozilla.org/) and submit that XPI at
+   <https://addons.mozilla.org/developers/addon/submit/on-your-own>, choosing
+   **On your own**. Download the signed `.xpi` AMO returns — that is the file to
+   distribute. (AMO needs this one-time submission to create the add-on; it
+   cannot be created from the API.)
+2. Generate API credentials at
+   <https://addons.mozilla.org/en-US/developers/addon/api/key/>, then
+   `export WEB_EXT_API_KEY=... WEB_EXT_API_SECRET=...` and run
+   `./sign-firefox.sh` — every later version is then built, signed and checksummed
+   in one step.
+3. Attach the signed XPI and the generated `dist/updates.json` to a GitHub
+   Release. The manifest's `gecko.update_url` points at
+   `releases/latest/download/updates.json`, so installed copies auto-update.
+
+To develop without signing, use `./dev-firefox.sh` or
+`about:debugging → Load Temporary Add-on` on the `build/firefox` directory.
+
+## Site setup
+
+Most sites need nothing. A few apps have their **own** Light/Dark setting, and
+while that's pinned they ignore the extension's `prefers-color-scheme` spoof —
+the palette changes, the polarity doesn't. Put those on "system":
+
+| App | Setting | Where |
 | --- | --- | --- |
 | WhatsApp Web | **System default** | Settings → Theme |
 | GitHub | **Sync with system** | Settings → Appearance → Theme |
 | Linear | **System preference** | `Ctrl+K` → "Change interface theme" (per-device) |
-| Discord | **Sync with computer** (Discord's "Auto") | Settings → Appearance → Theme |
+| Discord | **Sync with computer** | Settings → Appearance → Theme |
 | Notion | **Use system setting** | Settings → My settings → Appearance |
+| Slack | nothing | its Appearance radio is flipped automatically |
 
-Slack, Outlook, and HEY need nothing: Slack's Appearance radio is flipped
-automatically, and Outlook/HEY already follow the system.
-
-**To stop theming a site entirely**, right-click the extension's toolbar icon
-and choose **Options**, or open `chrome://extensions` /
-`brave://extensions` → the extension → **Details** → **Extension options**.
-Uncheck any site you want left as it ships. All sites start enabled.
-
-A few packs also leave things deliberately untouched:
-
-- **Notion** — block colours (a red callout, blue text) are authoring choices,
-  not chrome, so they keep their own hues.
-- **GitHub** — only the app is themed. The marketing site (`/features/*`,
-  `/pricing`, `/resources/*`, `/open-source`, and the signed-out homepage) is
-  left as GitHub ships it: those pages mix dark and light heroes, so one
-  terminal background would flatten them.
-- **HEY** — one pack covers both email and Calendar. Received mail keeps its
-  white sheet and dark ink on purpose: HEY renders the sender's HTML as
-  authored rather than transforming it for dark mode.
+**To turn theming off entirely**, right-click the extension's toolbar icon →
+**Options** (or `chrome://extensions` → Details → Extension options) and uncheck
+the master switch. Off means off: pages are left exactly as they ship.
 
 ## Verifying it works
 
-Open DevTools on the Slack tab and filter the console by `omarchy`. A
-successful theme switch looks like:
-
-```
-[omarchy] flipping Slack to Dark
-[omarchy] opening preferences (Ctrl+,)
-[omarchy] using workspace-actions menu
-[omarchy] clicking workspace-name button: ...
-[omarchy] activating Preferences menu item: ...
-[omarchy] preferences dialog opened via menu: true
-[omarchy] clicking Appearance tab
-[omarchy] clicking Dark radio
-[omarchy] dispatchClick didn't take; using React handler for Dark
-[omarchy bridge] called onChange on INPUT c-input_radio themeRadio__IHvrr
-[omarchy] React click confirmed Dark
-[omarchy] closing prefs via close button
-[omarchy] Slack color mode now Dark
-```
+Open DevTools and filter the console by `omarchy`. The background logs
+`[omarchy] theme pushed by native host: …` and the engine logs
+`[omarchy-recolor] theme <name> applied; palette surfaces: … inks: … chromatic: …`.
+Switching themes while a tab is open should repaint it within a frame or two.
 
 ## Customization
 
-All visual rules live in `extension/content.js` inside the big template
-string. Search for `===== main / message area =====`, `===== left tab rail`,
-etc. — each block is annotated.
+Everything lives in `extension/omarchy-universal.js`. The knobs most worth
+touching:
 
-Common tweaks:
+- **`CONTRAST_FLOOR`** — the minimum ink/surface contrast the pass enforces
+  (default `4.5`, WCAG AA).
+- **`VIVID_CHROMA` / `VIVID_L_MIN` / `VIVID_L_MAX`** — when a source color counts
+  as a "real color" (keeps its hue) rather than a tinted neutral.
+- **`SURFACE_HINT` / `INK_HINT`** — the name patterns used to infer a custom
+  property's role.
+- **`mapNeutral()`** — the polarity anchor; change it if you'd rather keep the
+  theme's elevation ladder even across a polarity mismatch.
 
-- **Sidebar shade**: change `dir * 0.04` (in the `sidebarBg` calculation in
-  `extension/omarchy-surfaces.js`) to a bigger number for more contrast.
-- **Selected channel highlight**: search for `withAlpha(accent, 0.35)` in
-  `omarchy-surfaces.js` — that's the selected-row tint. Drop to 0.2 for subtler,
-  raise for more punch.
-- **Use day/night nomenclature instead of luminance**: replace the
-  `relLuminance(...) < 0.5` check in `omarchy-surfaces.js` with `theme.is_night`.
-
-After editing, reload the extension on `brave://extensions` and refresh the
-Slack tab.
+After editing Chromium, reload the extension (`brave://extensions` → reload) and
+refresh the tab; for Firefox use `./dev-firefox.sh`.
 
 ## Limitations / known gotchas
 
-- **Slack rebrands its CSS classes occasionally.** The selectors anchor on
-  `data-qa` attributes where possible (which are more stable), but expect
-  occasional breakage when Slack ships a redesign. The console will say
-  things like `'Preferences' menu item not found` — those messages tell you
-  which selector died.
-- **Synthetic `Ctrl+,` doesn't open Preferences** in some Brave builds (the
-  React handler appears to check `event.isTrusted`). The menu-click path is
-  the real workhorse; the keyboard attempt is best-effort.
-- **Only one workspace at a time has been tested.** Multi-workspace setups
-  should work since the selectors are workspace-agnostic, but PRs welcome.
+- **The CSS `prefers-color-scheme` media query cannot be spoofed** by a content
+  script — only JavaScript's `matchMedia`. A site whose mode is driven purely by
+  CSS media queries follows the OS, not omarchy; the polarity-aware mapping keeps
+  it readable rather than inverting, but elevation is flattened for those pages.
+  Prefer apps' own "system" setting where it exists.
+- **Cross-origin stylesheets** (`cssRules` throws `SecurityError`) are skipped;
+  their colors stay as authored.
+- **`color-mix()`-style nested functions and canvas/WebGL pixels** are out of
+  reach.
+- **Custom properties with no role-hinting name** fall back to a neutral union
+  that preserves lightness, not role — rare, and the contrast pass catches the
+  unreadable cases.
+- **Large, continuously-mutating pages** cost the most: the contrast pass is
+  throttled to at most one full document walk every 800 ms after activity stops.
 
 ## Repository layout
 
 ```
 extension/
-├── manifest.json                   # MV3 manifest; pins the extension ID via "key"
-├── background.js                   # service worker; holds the native port
-├── omarchy-colors.js               # engine: color helpers (linearized WCAG luminance)
-├── omarchy-surfaces.js             # engine: deriveSurfaces() -- theme -> surfaces
-├── omarchy-runtime.js              # engine: OmarchyTheme registry + theme dispatch
-├── content.js                      # the Slack pack: injects CSS + drives prefs automation
-├── whatsapp.js                     # the WhatsApp pack: declarative CSS-var table
-├── github.js                       # the GitHub pack: Primer CSS-var table
-├── linear.js                       # the Linear pack: semantic CSS-var table
-├── discord.js                      # the Discord pack: declarative CSS-var table
-├── outlook.js                      # the Outlook pack: Fluent v9 CSS-var table
-├── notion.js                       # the Notion pack: --c-/--ca- tokens + Prism syntax
-├── hey.js                          # the HEY pack (email + calendar): --rgb-/--color- tokens
-└── inject-prefers-color-scheme.js  # MAIN-world: matchMedia polyfill + React-click bridge
+├── manifest.json                    # MV3 manifest; pins the extension ID via "key"
+├── background.js                    # service worker; native port + tab broadcast
+├── omarchy-universal.js             # the recoloring engine (colors, mapping, contrast)
+├── inject-prefers-color-scheme.js   # MAIN-world matchMedia shim (light/dark flip)
+├── options.html / options.js        # the master on/off switch
+└── icon-{16,32,48,128}.png
 
 native-host/
-├── omarchy-webapp-theme-host       # bash; pushes length-prefixed JSON over stdio
-└── com.omarchy.webapp_theme.json.template
+├── omarchy-web-theme-host           # bash; pushes length-prefixed JSON over stdio
+└── com.omarchy.web_theme.json.template
 
 hooks/
-└── omarchy-webapp-theme            # theme-set hook; SIGUSRs every running host
+└── omarchy-web-theme                # theme-set hook; SIGUSR1s every running host
 
-install.sh                          # host manifests + hook + --load-extension wiring
+install.sh                           # host manifests + hook + --load-extension wiring
+build-firefox.sh                     # Firefox-ready copy of extension/
+dev-firefox.sh                       # run the Firefox build temporarily (web-ext)
+sign-firefox.sh                      # build + sign the unlisted self-distributed XPI
+dev.sh                               # restart Chromium with the checkout extension
+packaging/aur/                       # PKGBUILD for the Arch package
 ```
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT — see [LICENSE](./LICENSE). Original work © 2026 Scott Jones; universal
+engine and fork © 2026 Pavel Škoda.

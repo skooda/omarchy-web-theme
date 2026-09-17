@@ -7,7 +7,7 @@
 # re-reads and pushes the new theme to the extension immediately.
 #
 # Installed by install.sh as a symlink at
-# ~/.config/omarchy/hooks/theme-set.d/omarchy-webapp-theme.
+# ~/.config/omarchy/hooks/theme-set.d/omarchy-web-theme.
 #
 # The hosts are children of the browser, so there can be several at once (one
 # per browser, per profile). Each writes a pidfile on startup; signal them all.
@@ -15,7 +15,7 @@
 # Never fail — a hook that exits non-zero makes omarchy-hook print "Hook failed"
 # on every single theme switch.
 
-RUNDIR="${XDG_RUNTIME_DIR:-/tmp}/omarchy-webapp-theme"
+RUNDIR="${XDG_RUNTIME_DIR:-/tmp}/omarchy-web-theme"
 
 [[ -d $RUNDIR ]] || exit 0
 

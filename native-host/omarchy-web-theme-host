@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Native messaging host for the Omarchy Web App Theme extension.
+# Native messaging host for the Omarchy Web Theme extension.
 #
 # Reads the active Omarchy theme and reports background / foreground / accent /
 # selection / browser-chrome colors to the extension as length-prefixed JSON on
@@ -10,7 +10,7 @@
 # choice. Reading Chromium's length-prefixed framing in bash means blocking in
 # `head -c4`, which a trap cannot interrupt — so a signal-driven wakeup would
 # need a background reader plus a FIFO. Instead the omarchy theme-set hook
-# (hooks/omarchy-webapp-theme, installed by install.sh into theme-set.d/) signals
+# (hooks/omarchy-web-theme, installed by install.sh into theme-set.d/) signals
 # us with SIGUSR1, and we drop inbound stdio entirely. The extension gets a push
 # on connect and a push on every theme change.
 #
@@ -25,7 +25,7 @@ set -uo pipefail
 CURRENT="$HOME/.local/state/omarchy/current"
 
 # Pidfiles live here so the theme-set hook can SIGUSR1 every running host.
-RUNDIR="${XDG_RUNTIME_DIR:-/tmp}/omarchy-webapp-theme"
+RUNDIR="${XDG_RUNTIME_DIR:-/tmp}/omarchy-web-theme"
 PIDFILE="$RUNDIR/$$.pid"
 
 WATCHDOG_PID=""

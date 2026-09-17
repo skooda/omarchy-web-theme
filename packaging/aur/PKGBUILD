@@ -1,54 +1,57 @@
-# Maintainer: Scott Jones <scottajones@gmail.com>
+# Maintainer: Pavel Škoda <p@v3l.cz>
+#
+# Fork of Scott Jones' omarchy-webapp-theme, rebuilt around a single
+# site-agnostic recoloring engine instead of per-site packs.
 
-pkgname=omarchy-webapp-theme
-pkgver=0.3.6
+pkgname=omarchy-web-theme
+pkgver=0.4.0
 pkgrel=1
-pkgdesc="Make Slack, Discord, GitHub, Linear, Outlook, WhatsApp, Notion and HEY follow your Omarchy theme"
+pkgdesc="Make any website follow your Omarchy theme: palette, light/dark, and accent"
 arch=('any')
-url="https://github.com/scottjones/omarchy-webapp-theme"
+url="https://github.com/skooda/omarchy-web-theme"
 license=('MIT')
 # The host is pure bash + coreutils; coreutils is part of base, so bash is the
 # only thing worth declaring. Omarchy 4+ is a hard runtime requirement, but it
-# isn't a pacman package — omarchy-webapp-theme-setup enforces it at runtime.
+# isn't a pacman package — omarchy-web-theme-setup enforces it at runtime.
 depends=('bash')
 optdepends=(
   'omarchy: Omarchy 4+ required -- provides the theme it reads and the theme-set hook'
   'chromium: supported browser'
   'brave-bin: supported browser'
   'google-chrome: supported browser'
+  'firefox: supported browser (self-distributed signed build)'
 )
-# This package was omarchy-slack-theme through 0.2.x, before it grew packs for
-# more sites than Slack.
-replaces=('omarchy-slack-theme')
-conflicts=('omarchy-slack-theme')
-provides=('omarchy-slack-theme')
+# This package replaces both prior names.
+replaces=('omarchy-webapp-theme' 'omarchy-slack-theme')
+conflicts=('omarchy-webapp-theme' 'omarchy-slack-theme')
+provides=('omarchy-webapp-theme' 'omarchy-slack-theme')
 install="$pkgname.install"
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-# Pinned to the published v0.3.6 tag tarball. Regenerate with `updpkgsums` on
-# every version bump — a stale sum fails the build for everyone.
-sha256sums=('c77162750ab027ec4bf440f0320d4f58f97170c330787112aee48d1cbb31538d')
+# Regenerate with `updpkgsums` once the v0.4.0 tag exists — the tarball can't be
+# hashed before it has been pushed.
+sha256sums=('SKIP')
 
 package() {
   cd "$srcdir/$pkgname-$pkgver"
 
   # The native-messaging host, at a stable path the system manifests point to.
-  install -Dm755 native-host/omarchy-webapp-theme-host \
-    "$pkgdir/usr/bin/omarchy-webapp-theme-host"
+  install -Dm755 native-host/omarchy-web-theme-host \
+    "$pkgdir/usr/bin/omarchy-web-theme-host"
 
   # install.sh does double duty: ./install.sh in a checkout, and the per-user
   # setup command here. It detects which by looking for the repo layout beside
   # itself, so installed at this path it only does the per-user wiring.
-  install -Dm755 install.sh "$pkgdir/usr/bin/omarchy-webapp-theme-setup"
+  install -Dm755 install.sh "$pkgdir/usr/bin/omarchy-web-theme-setup"
 
   # The unpacked extension. Users get it via --load-extension, pointed here by
-  # omarchy-webapp-theme-setup.
+  # omarchy-web-theme-setup.
   install -dm755 "$pkgdir/usr/share/$pkgname/extension"
   install -Dm644 -t "$pkgdir/usr/share/$pkgname/extension" extension/*
 
   # The omarchy theme-set hook. Can't be installed into ~ from a package, so
-  # omarchy-webapp-theme-setup links it into the user's hooks dir.
-  install -Dm755 hooks/omarchy-webapp-theme \
-    "$pkgdir/usr/share/$pkgname/hooks/omarchy-webapp-theme"
+  # omarchy-web-theme-setup links it into the user's hooks dir.
+  install -Dm755 hooks/omarchy-web-theme \
+    "$pkgdir/usr/share/$pkgname/hooks/omarchy-web-theme"
 
   # System-wide native-messaging manifests, so no per-user registration is
   # needed. Verified against the shipped binaries' compiled-in search paths:
@@ -57,15 +60,15 @@ package() {
   # Edge is best-effort: its path follows the same convention but is untested,
   # and an unused manifest is inert.
   local manifest
-  manifest="$(sed 's|__HOST_PATH__|/usr/bin/omarchy-webapp-theme-host|' \
-    native-host/com.omarchy.webapp_theme.json.template)"
+  manifest="$(sed 's|__HOST_PATH__|/usr/bin/omarchy-web-theme-host|' \
+    native-host/com.omarchy.web_theme.json.template)"
 
   local d
   for d in /etc/chromium /etc/opt/chrome /etc/opt/edge; do
     install -dm755 "$pkgdir$d/native-messaging-hosts"
     printf '%s\n' "$manifest" \
-      >"$pkgdir$d/native-messaging-hosts/com.omarchy.webapp_theme.json"
-    chmod 644 "$pkgdir$d/native-messaging-hosts/com.omarchy.webapp_theme.json"
+      >"$pkgdir$d/native-messaging-hosts/com.omarchy.web_theme.json"
+    chmod 644 "$pkgdir$d/native-messaging-hosts/com.omarchy.web_theme.json"
   done
 
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"

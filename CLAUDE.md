@@ -4,451 +4,174 @@ Guidance for working in this repo. Keep it short; update it when the architectur
 
 ## What this is
 
-A small **Manifest V3 browser extension** (Brave/Chrome/Chromium) that makes
-web apps follow the current [Omarchy](https://omarchy.org/) theme. One
-app-agnostic **engine** + one **pack per site**: Slack (`content.js`, the full
-pack — repaints chrome/sidebar/message pane and auto-flips Slack's Light/Dark
-Color Mode), WhatsApp Web (`whatsapp.js`, declarative), GitHub (`github.js`,
-declarative Primer tokens), Linear (`linear.js`), Discord (`discord.js`),
-Outlook Web (`outlook.js`, Fluent v9 tokens), Notion (`notion.js`,
-`--c-`/`--ca-` tokens + a Prism syntax palette), YouTube (`youtube.js`), Proton
-Mail (`protonmail.js`), Microsoft Teams (`teams.js`, Fluent v9 with the
-Teams-specific `colorDefault*`/`colorTeamsBrand1*` families), and
-HEY email + calendar
-(`hey.js`, one pack for both). A **bash
-native-messaging host** reads the active Omarchy theme from
-`~/.local/state/omarchy/current/` and pushes theme changes to the extension
-the moment they land. **Requires Omarchy 4+.**
+A small **Manifest V3 browser extension** (Brave/Chrome/Chromium/Edge and
+Firefox 128+) that makes **any website** follow the current
+[Omarchy](https://omarchy.org/) theme. One **site-agnostic engine** recolors every
+page from the active palette; a **bash native-messaging host** reads the theme
+from `~/.local/state/omarchy/current/` and pushes changes the moment the
+`theme-set` hook fires. **Requires Omarchy 4+.**
 
-This is end-user desktop tooling, not a web service. There is no build step, no
-package manager, and no test suite — it's plain JS plus a dependency-free bash
-script.
+This is a fork of Scott Jones' `omarchy-webapp-theme`, which themed a curated list
+of web apps with one "pack" per site. This fork removes the packs and replaces
+them with a single universal engine. The host, hook, and ID-pinning scheme are his
+design; keep the provenance in the README and LICENSE.
+
+There is no build step, no package manager, and no test suite for the extension —
+it's plain JS plus a dependency-free bash script.
 
 ## Layout
 
 - `extension/` — the unpacked extension
-  - `omarchy-colors.js` / `omarchy-surfaces.js` / `omarchy-runtime.js` — the
-    app-agnostic engine (loaded before `content.js`, shares its scope): color
-    helpers (`relLuminance` linearizes channels per WCAG, `contrastRatio`,
-    `alphaForContrast`, `inkOn` for ink that rides on a saturated fill,
-    `toTriplet` for triplet-valued design tokens),
-    `deriveSurfaces()` (the theme→surfaces contract), and the `OmarchyTheme`
-    registry that receives themes and dispatches to the registered pack.
-    `sidebarMuted` is **contrast-targeted, not a fixed fraction of `fg`**: its
-    alpha is solved per theme so muted copy clears 6:1 against the page bg
-    (matching GitHub's own dark muted at 6.15:1). A flat 0.65 put 5 of the 22
-    shipped themes below the AA 4.5:1 floor — rose-pine worst at 3.00:1 — and
-    packs spend this level on real copy, not incidental labels. It stays an
-    `rgba()` ink so it keeps adapting to the surface it lands on.
-  - `content.js` — **the Slack pack**, and the bulk of the work. Builds the
-    themed CSS from the derived surfaces and injects it; drives Slack's
-    Preferences modal to flip Color Mode; registers via `OmarchyTheme.register()`.
-    See "content.js structure" below.
-  - `whatsapp.js` — **the WhatsApp pack** (declarative tier): just a `cssVars`
-    table mapping WhatsApp's own CSS custom properties to the derived surfaces.
-    Every name verified against the live WhatsApp DOM (2026-08-04); the chat
-    list/header paint via the `--WDS-surface-*` semantic tokens, found by
-    resolving every custom property at the element and matching the painted
-    color. Requires WhatsApp's theme set to "System default".
-  - `github.js` — **the GitHub pack** (mostly declarative): maps Primer semantic
-    tokens (`--bgColor-*`, `--fgColor-*`, `--borderColor-*`, `--header-*`,
-    `--control-*`, `--overlay-*`) to derived surfaces. Verified via Playwright
-    against public github.com (2026-08-04). `onColorMode` pins
-    `data-color-mode`; Appearance → "Sync with system" is the supported setup.
-    Matches `github.com` and `gist.github.com`.
-    Also maps the `--brand-color-*` family: **signed-out GitHub is a second
-    design system**, and its header/mega-menu read
-    `var(--brand-color-canvas-default, var(--bgColor-default))` — since GitHub
-    defines the brand token, the Primer fallback never applies. Only the ~37
-    primitives are mapped; the ~560 per-component `--brand-<Component>-*` tokens
-    are build-time literals, not references to them.
-    **Skips GitHub's marketing site** (`/features/*`, `/pricing`, `/resources/*`,
-    `/open-source`, the signed-out homepage, …): those pages deliberately mix
-    dark and light heroes, so one omarchy surface flattens them. Detected by
-    GitHub's own routing — `<meta name="route-controller">` starting with
-    `site_` — never a URL prefix list, which would rot as pages are added.
-    Opting out is simply *not registering*; the engine holds and replays the
-    theme while no pack exists, so such pages get zero side effects. The pack
-    runs at `document_start`, so it waits on a MutationObserver for that meta
-    rather than `DOMContentLoaded`, which would flash unthemed app pages.
-    Its small `apply` hook exists for one thing: GitHub fills the header search
-    icon from `--fgColor-onEmphasis`, which correctly resolves to the page
-    background on dark themes — right for text on an accent fill, invisible
-    here — so that selector is overridden instead of the token retuned.
-  - `linear.js` — **the Linear pack**: semantic tokens (`--bg-*`, `--color-*`,
-    `--focus-*`) plus a dynamic remap of Linear's hashed StyleX `--sx-*` slots,
-    each classified by USAGE (which CSS property consumes it — background →
-    surface, color/fill → text; grey-level guessing is under-determined and
-    broke light mode) and re-stomped via a fast rAF paint path on re-renders.
-    **Requires Linear's interface theme set to "System preference"** (Ctrl+K →
-    "Change interface theme"; per-device, client-DB-backed — with a pinned
-    Light/Dark theme Linear renders hardcoded lch() styles no override can
-    reach). Matches `linear.app` and `*.linear.app`.
-  - `outlook.js` — **the Outlook pack** (declarative tier): maps Fluent v9
-    semantic tokens (`--colorNeutralBackground1..6` + Hover/Pressed/Selected,
-    `--colorNeutralForeground1..4`, `--colorNeutralStroke*`, `--colorBrand*`)
-    plus the legacy chrome set (`--neutralSecondarySurface`,
-    `--headerBackground`, …) to derived surfaces. Verified against the live
-    mailbox (2026-08-04). **Never remap `--white`/`--black`** — they're literal
-    colors for icon fills and text on brand buttons; repointing them inverts
-    contrast. Outlook follows the system light/dark on its own.
-  - `notion.js` — **the Notion pack**: maps Notion's `--c-*` (opaque) and
-    `--ca-*` (alpha wash) families, plus the two legacy `--cl-*` / `--cd-*` sets,
-    to the derived surfaces. Verified against the live app (2026-08-18). Notion's
-    names are abbreviated but regular — `Bac`/`Tex`/`Ico`/`Bor` x
-    `Pri`/`Sec`/`Ter`/`Ele`/`Int`/`Str`/`Acc`/`Inv`/`Dis` — which is what makes a
-    declarative table practical across ~1,300 tokens.
-    Three measurements make this pack far simpler than it first looks:
-    **(1)** Notion paints from INLINE styles that merely *consume* the tokens
-    (`background: var(--c-bacPri)`), so the engine's inline-important redefinition
-    of the property still wins — nothing has to beat an inline `background`.
-    **(2)** A StyleX layer sits in between (`--x-umghl: var(--ca-bacIntTra)`), but
-    unlike Linear's `--sx-*` slots these hold no literal colours: of 781 slot
-    declarations on a loaded page, every colour-valued one resolves to a semantic
-    token and the only literal is `transparent`. So no hash classification and no
-    rAF repaint path.
-    **(3)** Zero triplet consumption — `rgb(var(--x))` appears nowhere in Notion's
-    CSS or its inline styles, so every token takes a real colour.
-    Its `apply()` hook exists for the two things tokens cannot reach. First,
-    Notion's **boot stylesheet**, which hardcodes `body{background:#191919}` plus
-    the whole pre-hydration skeleton as literals — so `body` (and therefore the
-    viewport canvas behind an overscroll) kept Notion's grey for the entire
-    session, and every load flashed it. Second, **Prism syntax highlighting**,
-    which ships as class-scoped literals in two mode-specific sets. The syntax
-    palette is drawn from the theme's terminal colours — a terminal palette IS a
-    syntax palette — with a chroma floor and a 3.5:1 contrast floor per role,
-    falling back to `fg` so monochrome themes (`white`, `vantablack`) get
-    uncoloured code rather than an invented rainbow.
-    **Inline code** is handled separately, and deliberately NOT by remapping
-    `--c-redTexSec`: that token is also what a user's genuinely red TEXT resolves
-    to. Inline code is matched instead by the one thing unique to it — an
-    attribute-substring match on Notion's monospace stack,
-    `span[style*="SFMono-Regular"]`. Code BLOCK spans carry no inline
-    font-family (the block sets it on a container), so they are unaffected.
-    **Never remap** the nine chromatic block-colour families (`--c-blu*`,
-    `--c-red*`, …): a red callout is an authoring choice, the same line
-    `outlook.js` draws around a sender's design. The neutral `gra` family IS
-    mapped — including its easily-missed **alpha arm** (`--ca-gra*Tra`), which
-    paints the block drag-handle grips beside every paragraph. Scrims
-    (`--ca-modUndBac`, `--ca-oveSmo`) stay dark by design.
-    **Requires Notion's appearance set to "Use system setting"** (Settings → My
-    settings → Appearance): Notion flips its `notion-dark-theme` body class from a
-    `prefers-color-scheme` listener, which the MAIN-world shim drives. Matches
-    `app.notion.com` (the live app host) plus `notion.so`, which now only
-    redirects there.
-  - `hey.js` — **the HEY pack**, covering HEY email AND HEY Calendar: they are one
-    Rails app at `app.hey.com` sharing one token system, so one pack themes both.
-    Verified live 2026-08-18. The friendliest target in this repo: **9 of 948
-    elements carry a style attribute, only one is colour-valued, and there is not
-    a single inline `!important`** — none of the inline-painting or observer
-    machinery Slack and Outlook need.
-    **TWO LAYERS WITH DIFFERENT FORMATS — the one real trap.** `--rgb-*` hold bare
-    `r, g, b` TRIPLETS composited at the point of use (`rgba(var(--rgb-ink), .15)`,
-    193 such consumptions) while `--color-*` hold REAL COLOURS, and 78% of the
-    `--color-*` layer is *built from* the `--rgb-*` layer. Write `--rgb-*` through
-    `toTriplet()`; feeding a colour in yields `rgba(#7aa2f7, .15)`, invalid at
-    computed-value time. The pack sets BOTH layers explicitly anyway: ~19
-    `--color-*` tokens are hardcoded literals deriving from nothing
-    (`--color-bg--surface-solid: #f3f1ef`), and others are built per-mode from
-    `--rgb-almost-black` / `--rgb-almost-white` rather than the `--rgb-ink` alias,
-    so they'd keep HEY's purple-tinted greys.
-    **Light/dark needs no automation and no user setting**, unlike Notion. HEY's
-    own comment says it: `/* Hey World doesn't use JS, so we need to rely on CSS
-    media queries */`. The app reads matchMedia in JS and stamps
-    `data-color-scheme` on `<html>` — which the shim drives — and the
-    `@media (prefers-color-scheme: dark)` arm is only a no-JS fallback, guarded by
-    `:not([data-color-scheme="light"])`, so the reverse direction is safe too.
-    **NEVER REMAP THE EMAIL PAPER FAMILY**: `--color-bg--message-content` (`#fff`,
-    and notably IDENTICAL in light and dark) plus `--color-txt--on-message-content`
-    and friends. Unlike Outlook, HEY does NOT transform received mail for dark
-    mode — it renders the sender's HTML as authored on a white sheet, which is why
-    it keeps that sheet white in both modes with permanently dark ink. Retinting
-    it gives black text on a black background. (The body is in an iframe anyway,
-    which `all_frames: false` keeps us out of.) Same for `--color-bg--note-opaque`
-    (the sticky-note paper) and HEY's honestly-named `always` family
-    (`--color-always-white`, `--color-always-black`, `--rgb-always-blue`) — better
-    self-documentation than Outlook's misleading `--white`.
-    Its small `apply()` hook exists for one thing tokens can't express: HEY pairs
-    an ACCENT FILL with permanently-dark ink —
-    `.btn--primary { background: var(--color-primary); color: var(--color-almost-black) }`
-    — which works for HEY's light mint/amber brand but makes the label unreadable
-    on a DARK accent (catppuccin-latte, lupine). It can't be fixed by remapping
-    `--color-almost-black`, whose other consumers genuinely want "always dark" (the
-    dark-mode sheet box-shadow, the calendar day dividers, the print stylesheet),
-    so it's scoped by selector. HEY's class names are hand-written and stable, not
-    hashed, so a class selector is honest here. Their declaration is a NORMAL one
-    inside `@layer components` and an unlayered `!important` beats it; their few
-    LAYERED `!important` rules (`.btn--reversed`, `.spinner__dot`) would outrank an
-    unlayered one but resolve through tokens `cssVars` already themes. The hook
-    also flips the button's leading glyph, which is the one tractable corner of the
-    `--colorize-*` family — no filter solving needed, just a choice between the two
-    values HEY ships (`none` / `invert(100%)`).
-    **The entire `--colorize-*` family (30 tokens) is deliberately unmapped**:
-    they are not colours but CSS `filter` chains that recolour monochrome icon
-    assets. Hitting an arbitrary hex needs a numerical solver over five filter
-    functions, and it isn't needed for correctness — HEY swaps the whole set by
-    mode, so icons are already the right POLARITY, just not hue-matched.
-    `--color-tertiary` gets a **theme-coherent** fallback rather than a status
-    one: it's decorative (the calendar's Day/Week/Year switch and its
-    `linear-gradient(135deg, var(--color-secondary), var(--color-tertiary))`), so
-    where `statusPalette` rightly declines to invent a hue, importing HEY's purple
-    made it the most off-theme thing on the page. It now falls through the magenta
-    family → the palette colour farthest from every already-taken role → the
-    accent. The distance scan is explicit because `highlightColor()` avoids only
-    ONE colour and kept handing back the colour already used for `negative`.
-  - `youtube.js` — **the YouTube pack**: maps the Material 3 baseline roles
-    (`--yt-sys-color-baseline-*`) to the derived surfaces; the old `--yt-spec-*`
-    set is gone, and a live audit found zero triplet composition, so ~22 tokens
-    are a plain table. Its small `apply()` hook exists for one thing tokens can't
-    reach: YouTube paints the root canvas (`<html>`, visible at overscroll and
-    during pre-hydration) from the hardcoded literal `#0f0f0f`, never the
-    base-background token, so it paints that canvas from `s.bg` inline-important.
-    Needs YouTube Appearance → "device theme" (the default); pinned Light/Dark
-    breaks the shim's polarity swap.
-  - `protonmail.js` — **the Proton Mail pack**: Proton uses its own `--n-*`
-    scalar tokens (Color Elevation), pure real colours (zero triplet
-    composition), so it's a plain token table. Its small `apply()` hook paints
-    the local-storage cached background (Proton's app-shell favicon/#2c2c2c
-    pre-hydration flash) from `s.bg`.
-  - `teams.js` — **the Microsoft Teams pack**: Fluent v9 ships colors only via
-    the `.fui-FluentProvider` hashed-class rule (~404 real-colour tokens, no
-    triplets), so it's a plain table (~140 keys) extending the Outlook ladder
-    with the Teams-specific families — `colorDefault*` (its rail token
-    `--colorDefaultBackground7` repaints the left nav), `colorTeamsBrand1*`,
-    `colorTeamsNeutralStrokeSubtleAlpha` — plus the `<html>` pre-boot shell vars
-    (`--themeBackgroundColor`, `--themeTitleBar*`, `--themeLoadingScreenColor`,
-    `--backgroundCanvas`, …) to kill the white flash before hydration. Status =
-    Danger/Success/Warning only (Fluent v9 has no Info). `colorPalette*`, the
-    polarity-inverting family, shadows/`colorBackgroundOverlay` and geometry
-    tokens are intentionally not mapped. Like youtube.js/protonmail.js it's
-    loaded in a SINGLE content-script entry with the engine files (Chromium
-    152's independent entries inject in arbitrary order, which crashed the pack).
-  - `background.js` — MV3 service worker. Holds the native-messaging port,
-    rebroadcasts pushed themes to matched tabs (the site list is derived from
-    the manifest's content-script matches — adding a pack never touches this
-    file), answers `request-fresh-theme`.
-  - `inject-prefers-color-scheme.js` — runs in the page's MAIN world at
-    `document_start`; a near-complete `matchMedia('(prefers-color-scheme)')`
-    polyfill so Slack's "Sync with OS" appearance follows omarchy, plus the
-    Slack-only `omarchy:react-click` bridge that drives the Preferences radio.
-  - `manifest.json` — permissions + content-script registration. Carries a
-    **`key`** that pins the extension ID to `egagnaecglnnmbbnpbbccgajinplhckp`
-    on every machine, so the host manifest's `allowed_origins` can be hardcoded.
-    Never regenerate it — the ID is baked into the host manifest template and
-    into users' installed copies.
-  - `icon-{16,32,48,128}.png` — the extension icon, wired into both `icons` and
-    `action.default_icon`. Rasterized from `icon.svg`; don't hand-edit.
-- `icon.svg` — source of truth for the icon (regen command is in its comment).
-  Drawn from scratch, deliberately sharing nothing with the **Omarchy mark** —
-  Omarchy's MIT license covers its code, not its branding, and reusing the logo
-  would imply this is an official Omarchy project. Instead it follows the
-  *convention* of omarchy's bundled chromium extensions (`copy-url`, `yt-dlp`):
-  **monochrome `#9ECE6A` line art on a transparent ground**, no plate. Known
-  trade-off, accepted for that consistency: `#9ECE6A` is 8.3:1 on dark browser
-  chrome but 1.6:1 on light, so the icon is quiet on a light omarchy theme.
-  Tuned for the 16px toolbar first: edges on multiples of 8 so they land on whole
-  pixels at 1/8 scale, a title *strip* rather than dots (dots disappear entirely
-  at that size), and a deliberately **wide** light→dark swatch ramp, because
-  monochrome separates by value and value survives downscaling much worse than
-  hue — a narrow ramp merged into one green block at 16px.
-- `native-host/` — `omarchy-webapp-theme-host` (bash; emits length-prefixed JSON
-  over stdio) + the native-messaging manifest template.
-- `hooks/omarchy-webapp-theme` — omarchy `theme-set` hook. Signals SIGUSR1 to
-  every running host via pidfiles in `$XDG_RUNTIME_DIR/omarchy-webapp-theme/`.
-- `install.sh` — takes no extension ID. Refuses on pre-Omarchy-4 (no
-  `~/.local/state/omarchy/current`). Otherwise writes host manifests to every
-  Chromium-family profile dir, symlinks the hook into `hooks/theme-set.d/`, and
-  adds `--load-extension` to the flags confs of installed browsers. `--no-flags`,
-  `--uninstall`. **Brave Origin is a separate browser, not a Brave channel** —
-  its own package (`brave-origin-bin`), binary, `brave-origin-flags.conf`, and
-  `BraveSoftware/Brave-Origin` profile root; all three of its channels are in
-  both lists. It reads system-wide hosts from `/etc/chromium` and
-  `/etc/opt/chrome`, so a *packaged* install needs no per-user manifest there.
+  - `manifest.json` — MV3 manifest; pins the Chrome/Chromium ID with `key` (never
+    regenerate it — it's baked into the host manifest and users' installs) and
+    carries `browser_specific_settings.gecko` for the Firefox ID.
+  - `background.js` — service worker. Holds the native-messaging port and
+    rebroadcasts pushed themes to tabs. Cross-browser via `api` = `browser.*` when
+    present else `chrome.*`; calls must satisfy **both** shapes (pass the callback
+    AND attach `.then` — Firefox's `browser.tabs.query` ignores the callback).
+  - `omarchy-universal.js` — **the whole engine.** See below.
+  - `inject-prefers-color-scheme.js` — MAIN-world `matchMedia` shim so apps that
+    follow `prefers-color-scheme` in JS flip with the theme.
+  - `options.html` / `options.js` — the single master on/off switch
+    (`chrome.storage.sync.disabledSites.universal`).
+  - `icon-{16,32,48,128}.png`.
+- `native-host/` — `omarchy-web-theme-host` (bash; length-prefixed JSON over
+  stdio) + `com.omarchy.web_theme.json.template`.
+- `hooks/omarchy-web-theme` — omarchy `theme-set` hook; SIGUSR1s every running
+  host via pidfiles in `$XDG_RUNTIME_DIR/omarchy-web-theme/`.
+- `install.sh` — writes host manifests to every Chromium-family profile dir,
+  symlinks the hook into `hooks/theme-set.d/`, adds `--load-extension` to the
+  flags confs of installed browsers. Also the packaged `omarchy-web-theme-setup`.
+  `--no-flags`, `--uninstall`. Braew Origin etc. are separate browsers.
+- `build-firefox.sh` / `dev-firefox.sh` / `sign-firefox.sh` — Firefox variants.
+- `packaging/aur/` — PKGBUILD for the Arch package.
 
-## Adding a site pack
+## The engine (`extension/omarchy-universal.js`)
 
-The whole point of the engine/pack split. One extension, one pinned ID, one
-host manifest — a new site needs **no new keys and no native-messaging changes**:
+Everything is one file walked once at `document_start`. It rewrites the CSSOM and
+inline styles, then repairs contrast. The pieces that matter:
 
-1. Create `extension/<site>.js` ending in `OmarchyTheme.register({ id: "<site>",
-   ... })`. Start declarative: `cssVars(theme, s)` returning a map of the SITE'S
-   OWN css custom properties → derived surfaces (see `whatsapp.js`). Only
-   escalate to `apply()` + observers + `onColorMode()` if the site fights back
-   (see `content.js` — Slack is the worst case).
-2. In `manifest.json`: add the site's URL pattern to `host_permissions`, to the
-   two shared entries (shim + engine), and add a new content-script entry
-   loading just `<site>.js` for that pattern. Keep pack files flat in
-   `extension/` — the AUR PKGBUILD installs with a flat `extension/*` glob.
-3. Add the site's row to `SITES` in `extension/options.js` (the per-site
-   enable/disable toggle; the `id` must match the register call — the engine
-   gates on `chrome.storage.sync` `disabledSites[id]` and pends the theme until
-   both the pack and the settings have arrived).
-4. `background.js` and `install.sh` need nothing; the site list is derived from
-   the manifest.
-5. Verify against the live site (see Dev / test workflow). Read variable/class
-   names off the live DOM — never guess.
-
-The host's payload carries the stable named fields (`bg`, `fg`, `accent`,
-`selection_bg`, `chrome`) plus `colors`: the theme's entire `colors.toml`
-palette, for packs that want to map more than five values.
+- **Palette groups.** The theme palette is split into three disjoint sets —
+  **surfaces** (`*background`, `selection`, `chrome` + derived `mix(bg,fg)`
+  elevation rungs), **inks** (`*foreground`, `cursor`, `muted` + derived muting
+  rungs), **chromatic** (ANSI + accent). `slotGroup()` decides by **name**, never
+  chroma (a cream foreground is chromatic-looking yet is every text's ink slot).
+- **Declaration role** (`declGroup`). The CSS property picks the neutral group
+  (`color`/fill/stroke → ink; background/border/shadow → surface). Custom
+  properties have no declared role, so their **name** is read back via
+  `SURFACE_HINT` / `INK_HINT` (`--bg*`, `--*-surface`, `--*-border` vs `--fg*`,
+  `--*-text`, `--*-icon`); only truly nameless vars fall back to the neutral
+  `union`.
+- **Source classification** (`mapColorToken`). A source is "vivid" only when
+  `chroma >= VIVID_CHROMA` **and** mid-lightness — chroma alone misfiled dark
+  tinted surfaces (`#05182e`, chroma 17) and the theme's own cream fg. Vivid
+  colors match within **chromatic** by **hue** (`nearestChromatic`), not Lab
+  distance (the palette usually has no blue; distance sent GitHub's `#0969da` to
+  magenta).
+- **Polarity** (`mapNeutral`). A background's lightness gives the page's polarity,
+  an ink's gives the inverse. When the page's implied polarity opposes the
+  theme's, the color is anchored on the theme's own `bg`/`fg` instead of the far
+  end of the ladder — this is what stops a dark page under a light theme from
+  inverting. Same polarity keeps the elevation rungs.
+- **Color parsing** (`resolveColor`). Canvas `fillStyle` parses any syntax, but
+  the getter only returns legacy syntaxes as sRGB — modern functions
+  (`oklab()`/`color()`) come back in their own space, so those are **rasterized to
+  a pixel** and read back. Parsing the decimals as RGB bytes silently invents a
+  color (Tailwind v4). `color-mix()`-style nested functions and cross-origin
+  sheets are skipped.
+- **Apply** (`applyTheme`). Sets `color-scheme`, paints `html` background and the
+  omarchy font important, updates `meta[name=theme-color]`, and dispatches
+  `omarchy:set-color-scheme` for the MAIN-world shim. First apply sweeps; a theme
+  switch `remapAll()`s (restore snapshots, then re-map from true originals).
+- **Contrast pass** (`contrastNode` / `contrastPass`). For every element that
+  paints text (`paintsText`), the computed ink is checked against its first opaque
+  painted ancestor and repaired to **4.5:1** (WCAG AA) via the ink ladder, then
+  `theme.bg` as the on-fill ink, then white/black. Repairs are flagged
+  `data-omarchy-ink` so sweeps never re-map them.
+  - `contrastWalked` is a WeakMap of the last `(ink|surface)` checked, not a
+    WeakSet: a node can be checked while it still holds the SITE's colors.
+  - The observer maps (`sweep()`) **before** contrasting its burst, and `sweep()`
+    itself schedules the pass. That schedule is a **throttle (≤1 pass/800 ms), not
+    a debounce** — resetting on every mutation starves it on an app that mutates
+    continuously (Tailwind's code blocks sat cyan-on-dark).
+- `window.__omarchyRecolorDebug` exposes `state`, `mapValue`, `mapNeutral`,
+  `nearestChromatic`, `contrastNode`, `contrastPass`, `contrastSubtree`,
+  `effectiveSurface` for CDP probing.
 
 ## Host design (why it looks like this)
 
 The host is **push-only** — it never parses inbound messages, and `background.js`
-never writes to the port. Reading Chromium's length-prefixed framing in bash
-means blocking in `head -c4`, which a trap can't interrupt; going push-only
-removes the need entirely. Consequences to preserve when editing:
+never writes to the port. Reading Chromium's length-prefixed framing in bash means
+blocking in `head -c4`, which a trap can't interrupt; going push-only removes the
+need entirely. Consequences to preserve when editing:
 
 - **Omarchy 4+ only.** The host reads `~/.local/state/omarchy/current/` and is
-  driven entirely by SIGUSR1 from the theme-set hook — there is no polling
-  fallback. `install.sh` symlinks the hook into `hooks/theme-set.d/` (the `.d`
-  form has existed since Omarchy 3.8). Older Omarchy stays on the pre-0.3 release.
-- The main loop `wait`s on the stdin watchdog; a SIGUSR1 interrupts the `wait`,
-  the trap pushes the new theme, and the loop resumes. No `sleep` timers.
+  driven entirely by SIGUSR1 from the theme-set hook — no polling fallback.
+  `install.sh` symlinks the hook into `hooks/theme-set.d/`.
+- The main loop `wait`s on the stdin watchdog; a SIGUSR1 interrupts the `wait`, the
+  trap pushes the new theme, and the loop resumes. No `sleep` timers.
 - The stdin watchdog **must** read via an explicit `<&3` dup. Bash gives every
-  background job `/dev/null` as stdin, so a bare read loop EOFs instantly and
-  kills the host right after its first push.
+  background job `/dev/null` as stdin, so a bare read loop EOFs instantly and kills
+  the host right after its first push.
 
-## content.js structure
+## Firefox
 
-1. **Engine** (`omarchy-colors.js` / `omarchy-surfaces.js` / `omarchy-runtime.js`,
-   loaded before `content.js`) — color helpers (`hexToRgb`, `relLuminance`
-   [linearized WCAG channels], `shade`, `withAlpha`, `mix`), `deriveSurfaces()`,
-   and the `OmarchyTheme` registry. Dark vs. light is decided by **WCAG relative
-   luminance** of the terminal bg (`< 0.5` = dark), *not* the day/night name.
-   `content.js` is the Slack **pack**: it ends with `OmarchyTheme.register(...)`.
-2. **`applySlackTheme(theme, s)`** (the pack's `apply` hook) — takes the surfaces
-   `s` the engine derived (`sidebarBg`, `chromeBg`, `hoverBg`, `selectedBg`, …).
-   **Destructure every field the CSS/`directPaint` uses — a missing one is a
-   silent runtime ReferenceError** (this bit us with `chromeBg`). Then it builds
-   one big CSS template string and injects it into a `<style id="omarchy-slack-style">`.
-3. **Three token systems, three different rules.** Slack is mid-migration, so the
-   same pane is painted by three families and each needs a different treatment:
-   - `--sk_*` — held as bare **`r, g, b` triplets** and composited at the point of
-     use (`rgba(var(--sk_primary_foreground), .7)`). Write triplets via
-     `toTriplet()`.
-   - `--sk_*_solid` — the same ink **pre-composited against Slack's own
-     `#1a1d21`**, consumed at alpha 1. Opaque literals carrying a hardcoded
-     background, so re-composite them against *our* bg:
-     `toTriplet(mix(theme.bg, fg, α))`. The ladder is α = .7 / .5 / .27 / .13 /
-     .05 / .04 for max / high / mid / low / soft / min (recovered by solving
-     Slack's shipped values back against `#1a1d21`).
-   - `--dt_color-*` — Slack's newer system, consumed **bare**, so these hold
-     **real colors**. `content-pry/sec/ter` drive text (sender names are
-     `content-pry`), `content-hgl-1` drives links and @mention slugs. Only the
-     foreground and outline families are mapped; the `base-` / `surf-`
-     backgrounds are left to the explicit pane rules, and `constants-white` /
-     `constants-black` are literals — never repoint them.
-   `--dt_color-plt-*` are raw palette primitives (~336 of them, triplet-consumed);
-   they're brand scales, not semantic slots, so they're deliberately unmapped.
-4. **Inline-important overrides** — Slack sets its own high-specificity inline
-   styles (CSS custom props like `--rainbow-*`, `--saf-*`, and direct
-   `background-color` on the rail/sidebar/nav on blur). External `!important` CSS
-   loses to inline styles, so we re-write the same vars + direct paints
-   **inline with `setProperty(..., "important")`** to win the cascade.
-5. **`paintActiveRows()`** — paints the selected-channel pill inline because
-   Slack's React re-render stomps our CSS; a MutationObserver re-runs it.
-6. **MutationObservers** — re-inject the style if Slack removes it, keep active-row
-   paint current, etc.
-7. **Color-mode automation** — `ensureSlackColorMode(isDark)` opens
-   Preferences → Appearance and toggles the radio via a MAIN-world React bridge
-   (synthetic clicks don't fire Slack's handler reliably).
+`build-firefox.sh` makes a Firefox-ready copy: swaps `background.service_worker`
+for event-page `background.scripts`, drops the Chrome `key`, and adds
+`data_collection_permissions` (AMO requires it). `FX_UPDATE_URL` adds
+`browser_specific_settings.gecko.update_url` for self-hosted updates.
+`sign-firefox.sh` builds, runs `web-ext lint --self-hosted`, signs as **unlisted**
+(`--channel unlisted`), and writes `dist/updates.json`. Unlisted add-ons cannot
+create themselves via the API (MV3) — the first submission is done once through
+the AMO web UI; the script's `--package` mode produces the XPI for that.
 
-## How the CSS rules are written (important conventions)
-
-- Selectors use **attribute-substring matches** like `[class*="p-activity_ia4_page"]`
-  because Slack ships **hashed/minified class names** that change between builds.
-  Never hard-code a full class name; match a stable substring prefix.
-- Almost every rule needs `html body …` prefixes and `!important` to beat Slack's
-  specificity. Follow the existing pattern.
-- Rules are grouped into annotated `/* ===== section ===== */` blocks (main pane,
-  tab rail, channel sidebar, top nav, message hover, DMs/Activity list, badges,
-  text readability). Add new work to the matching block or a new annotated block.
-- Theme-derived values come from CSS vars (`--omarchy-bg`, `--omarchy-fg`,
-  `--omarchy-accent`, `--omarchy-sidebar-bg`, `--omarchy-hover-bg`,
-  `--omarchy-selected-bg`, `--omarchy-fg-strong`). Use these rather than literals.
-- The whole CSS block is a **JS template literal** (backtick-delimited string).
-  Never put a backtick `` ` `` or `${` inside it — *including inside `/* */`
-  comments*. They're live template-literal syntax even in a comment, so a stray
-  backtick silently terminates the string and the entire content script fails to
-  parse (symptom: `Uncaught SyntaxError` and **all** theming disappears).
-- **Never write `*/` inside a CSS comment** in that literal either — most easily
-  done by accident in prose, e.g. a glob pair like `base-*` / `surf-*` written as
-  one token. It closes the comment early; the rest of the sentence parses as CSS
-  garbage and the *intended* `*/` becomes a stray error token, whose recovery
-  discards everything up to the next `;`. That silently eats **exactly one
-  declaration** — the next one. `node --check` cannot see this (the JS is valid),
-  and the symptom is maddening: one custom property simply missing from the CSSOM
-  while its neighbours are fine. Diagnose by comparing `/*` and `*/` counts in the
-  block, or check `[...rule.style]` for the property you expected.
-- **A design token's FORMAT is part of its contract — verify it, never assume.**
-  Some tokens hold real colors, others hold bare `r, g, b` triplets, and feeding
-  the wrong kind in produces a value that is *invalid at computed-value time*: the
-  declaration is dropped, and for an inherited property like `color` the cascade
-  unwinds to the UA default — **white under `color-scheme: dark`, black under
-  light**. So it fails as plausible-looking text in the wrong color rather than as
-  something obviously broken, and the failure flips with theme polarity. Read how
-  the site consumes a token before overriding it (`rgb(var(--x))` ⇒ triplet, bare
-  `var(--x)` ⇒ color) — see the audit recipe in Dev / test workflow.
-- Some surfaces (e.g. the rail/sidebar, and the Activity/Threads `All|VIP` tab
-  strip — `p-activity_ia4_page__tab_menu` / `__tab_container`) are painted by
-  Slack **inline with `!important`**, which beats even our high-specificity
-  `!important` CSS. Those can't be fixed in the stylesheet — paint them inline
-  via `setProperty(..., "important")` and re-run on the MutationObserver. See
-  `paintTabStrips()` / `paintActiveRows()`.
+A custom `update_url` is only valid in the **self-hosted** linter mode; plain
+`web-ext lint` reports it as `MANIFEST_UPDATE_URL`. If AMO ever rejects a
+submission with that error, build with `FX_UPDATE_URL= ` (empty) and ship without
+self-hosted updates.
 
 ## Dev / test workflow
 
-There's no automated harness — changes are verified by hand against live Slack:
-
-1. Edit files under `extension/`.
-2. Reload the unpacked extension at `brave://extensions` (or Chrome equivalent).
-3. Reload the Slack tab. Filter the DevTools console by `omarchy` to see logs.
-4. To find selectors for a Slack UI element, **inspect the live DOM in DevTools**
-   (Slack's class names are hashed, so you must read them off the running app —
-   don't guess). The repo can't be inspected locally because the markup is Slack's.
-
-Note: Brave normally runs **without** a remote-debugging port, so an automated
-browser can't attach to the user's own logged-in session. But a **scratch
-Chromium can be driven directly**, which beats asking the user to paste DOM:
+Chromium is driven through a scratch profile over CDP; Brave normally runs without
+a debugging port, so an automated browser can't attach to the user's own session.
 
 ```sh
-chromium --user-data-dir=~/.cache/omarchy-slack-test-profile \
-  --remote-debugging-port=9222 --load-extension=<repo>/extension \
-  --disable-features=DisableLoadExtensionCommandLineSwitch --no-first-run \
-  https://app.slack.com/          # log in once; the profile persists
+chromium --user-data-dir=/tmp/omarchy-exp --remote-debugging-port=9229 \
+  --load-extension=<repo>/extension --no-first-run \
+  --disable-features=DisableLoadExtensionCommandLineSwitch https://example.com/
 ```
 
-Then `require("playwright-core").chromium.connectOverCDP("http://localhost:9222")`
-and drive `ctx.pages()` / `ctx.serviceWorkers()`. Gotchas, all learned the hard way:
+Then `require("playwright-core").chromium.connectOverCDP("http://localhost:9229")`
+and drive `ctx.pages()` / `ctx.serviceWorkers()`. Gotchas, learned the hard way:
 
 - Never `browser.close()` — it kills the externally launched window. `process.exit(0)`.
 - `chrome.runtime.reload()` is unreliable for unpacked extensions; **restart
-  chromium** to pick up edited files. Identify the browser process by `pgrep -x
-  chromium` + profile path + *absence* of `--type=`; matching on the debug port
-  also matches the launching shell and self-kills it.
-- With no native host in that profile, the extension gets **no theme**, so it
-  injects nothing. Push one from the service worker instead:
-  `chrome.tabs.sendMessage(tabId, {type:"omarchy-theme", theme})` with the host's
-  payload shape. A full page navigation loses it — re-push after every reload.
+  chromium** to pick up edited files. Kill by pid from `pgrep -f <profile>` while
+  filtering out your own shell (a `pkill -f` whose pattern is in your command line
+  self-kills it).
+- With no native host in that profile, the extension gets **no theme**. Push one
+  from the service worker instead:
+  `chrome.tabs.sendMessage(tabId, {type:"omarchy-theme", theme})`. A full
+  navigation loses it — re-push after every reload.
 - **Screenshots hang** when the window is occluded (no frames are composited);
-  `fromSurface: false` doesn't help. Assert on `getComputedStyle` instead — it's
-  more precise than a screenshot anyway.
+  assert on `getComputedStyle` instead — more precise anyway.
+- To test the engine's isolated-world state, attach CDP, `Runtime.enable`, and
+  evaluate in the execution context whose `origin` starts with
+  `chrome-extension://` (the page's MAIN world can't see it).
 
-To audit how a site consumes a design token (the thing that makes token bugs
-diagnosable), walk the CSSOM in the page — Slack's stylesheets are same-origin
-and fully readable. Count `rgb(var(--x))` vs bare `var(--x)` to get the required
-format, and for a mystery color, list every rule declaring `color` that matches
-the element or an ancestor. `[...rule.style]` reveals declarations that were
-dropped at parse time.
+Audit recipe: resolve computed colors through a **canvas** (the `fillStyle` getter
+returns hex for rgb inputs — do **not** regex the digits out of `#81b8a8`, that
+reads `81,8,8` and invents a color; the engine's `parseResolved` decodes hex
+properly). Then walk every element that has a text node and compare its resolved
+`color` to its first opaque ancestor background.
 
-The **native host and install.sh**, unlike the CSS, *are* testable headlessly —
-do that rather than asking the user to click through a browser. Both honor
-`$HOME` and `$XDG_RUNTIME_DIR`, so point them at a scratch dir:
+The **native host and install.sh** are testable headlessly — do that rather than
+asking the user to click through a browser. Both honor `$HOME` and
+`$XDG_RUNTIME_DIR`:
 
 ```sh
 # host: hold stdin open, or the watchdog exits immediately
-( sleep 5 ) | HOME=/tmp/fake XDG_RUNTIME_DIR=/tmp/run ./native-host/omarchy-webapp-theme-host > out.bin
+( sleep 5 ) | HOME=/tmp/fake XDG_RUNTIME_DIR=/tmp/run ./native-host/omarchy-web-theme-host > out.bin
 head -c4 out.bin | od -An -v -tu4 --endian=little   # must equal the JSON byte length
 
 # install.sh: sandbox the whole thing
@@ -456,10 +179,17 @@ HOME=/tmp/fake ./install.sh && HOME=/tmp/fake ./install.sh --uninstall
 ```
 
 Point `~/.local/state/omarchy/current/theme` at any dir under
-`/usr/share/omarchy/themes/` to exercise a specific palette.
+`/usr/share/omarchy/themes/` to exercise a specific palette. For Firefox, `web-ext
+lint --self-hosted` and `web-ext run` validate without signing (`npx --yes
+web-ext`).
+
+Run `node --check extension/*.js` and validate `manifest.json` as JSON after edits.
 
 ## Conventions
 
 - Vanilla JS only (no framework, no bundler). Keep the heavy inline comments —
-  they explain *why* a given hack beats Slack's cascade; preserve that context.
+  they explain *why* an approach beats a site's cascade; preserve that context.
 - Don't open PRs or push without confirming with the user.
+- The project name and identifiers are spread across several files (extension
+  name, `gecko.id`, host name `com.omarchy.web_theme`, runtime dir, hook, share
+  dir, AUR pkgname). Rename consistently or not at all.

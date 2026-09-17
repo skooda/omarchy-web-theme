@@ -1,10 +1,26 @@
-const HOST = "com.omarchy.webapp_theme";
+const HOST = "com.omarchy.web_theme";
+
+// Firefox's chrome.* shim keeps callback signatures and does NOT return
+// promises everywhere Chrome's service-worker context does (notably
+// tabs.sendMessage), while Chrome knows no browser.* alias. Route every
+// call through whichever namespace this runtime provides: browser.* on
+// Firefox promises everything, chrome.* on Chrome/Chromium/Brave promises
+// in MV3.
+const api = (() => {
+  try {
+    if (typeof browser !== "undefined") return browser;
+  } catch (_) {}
+  return chrome;
+})();
 
 // Every site a pack supports, straight from the manifest's content-script
 // matches — adding a pack never touches this file.
 const MATCH_PATTERNS = [
-  ...new Set(chrome.runtime.getManifest().content_scripts.flatMap((cs) => cs.matches)),
+  ...new Set(api.runtime.getManifest().content_scripts.flatMap((cs) => cs.matches)),
 ];
+// Universal (experimental) mode: the manifest matches <all_urls>, so every
+// http(s) tab is a themed tab.
+const IS_UNIVERSAL = MATCH_PATTERNS.includes("<all_urls>");
 // Bare hostnames for the cheap onUpdated filter ("*://*.slack.com/*" → slack.com).
 const MATCH_HOSTS = [
   ...new Set(
@@ -15,6 +31,7 @@ const MATCH_HOSTS = [
 ];
 
 function isThemedUrl(url) {
+  if (IS_UNIVERSAL) return /^https?:/i.test(url || "");
   try {
     const host = new URL(url).hostname;
     return MATCH_HOSTS.some((h) => host === h || host.endsWith("." + h));
@@ -34,7 +51,7 @@ function connect() {
   // gets broadcast to the same tabs N times.
   if (port) return;
   try {
-    port = chrome.runtime.connectNative(HOST);
+    port = api.runtime.connectNative(HOST);
     console.log("[omarchy] native port connected");
   } catch (e) {
     console.warn("[omarchy] connectNative threw:", e);
@@ -48,12 +65,12 @@ function connect() {
       return;
     }
     console.log("[omarchy] theme pushed by native host:", theme.theme_name, theme.bg);
-    chrome.storage.local.set({ theme });
+    api.storage.local.set({ theme });
     broadcast(theme);
   });
 
   port.onDisconnect.addListener(() => {
-    const err = chrome.runtime.lastError;
+    const err = api.runtime.lastError;
     console.warn("[omarchy] native host disconnected:", err && err.message);
     port = null;
     scheduleReconnect();
@@ -73,17 +90,23 @@ function scheduleReconnect() {
 }
 
 function broadcast(theme) {
-  chrome.tabs.query({ url: MATCH_PATTERNS }, (tabs) => {
+  const onTabs = (tabs) => {
     console.log("[omarchy] broadcasting theme to", tabs.length, "themed tab(s)");
     for (const t of tabs) {
-      chrome.tabs.sendMessage(t.id, { type: "omarchy-theme", theme }).catch(() => {});
+      api.tabs.sendMessage(t.id, { type: "omarchy-theme", theme }).catch(() => {});
     }
-  });
+  };
+  // Dual-shape call: Chrome invokes the callback and returns undefined, Firefox
+  // (browser.*) IGNORES the extra argument and returns a promise. Without the
+  // .then branch the broadcast silently never runs on Firefox, so only the
+  // initial request-theme reached tabs and live theme changes did nothing.
+  const result = api.tabs.query({ url: MATCH_PATTERNS }, onTabs);
+  if (result && typeof result.then === "function") result.then(onTabs).catch(() => {});
 }
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === "request-theme") {
-    chrome.storage.local.get("theme").then(({ theme }) => sendResponse(theme || null));
+    api.storage.local.get("theme").then(({ theme }) => sendResponse(theme || null));
     return true;
   }
   // Kept for content.js, which asks for a guaranteed-current theme right before
@@ -92,20 +115,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // immediately, and we write storage on that push — all before the content
   // script gets the broadcast that makes it ask. So there's nothing to go fetch.
   if (msg && msg.type === "request-fresh-theme") {
-    chrome.storage.local.get("theme").then(({ theme }) => sendResponse(theme || null));
+    api.storage.local.get("theme").then(({ theme }) => sendResponse(theme || null));
     return true;
   }
 });
 
-chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+api.tabs.onUpdated.addListener((tabId, info, tab) => {
   if (info.status !== "complete") return;
   if (!tab.url || !isThemedUrl(tab.url)) return;
-  chrome.storage.local.get("theme").then(({ theme }) => {
-    if (theme) chrome.tabs.sendMessage(tabId, { type: "omarchy-theme", theme }).catch(() => {});
+  api.storage.local.get("theme").then(({ theme }) => {
+    if (theme) api.tabs.sendMessage(tabId, { type: "omarchy-theme", theme }).catch(() => {});
   });
 });
 
-chrome.runtime.onInstalled.addListener(connect);
-chrome.runtime.onStartup.addListener(connect);
+api.runtime.onInstalled.addListener(connect);
+api.runtime.onStartup.addListener(connect);
 
 connect();

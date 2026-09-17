@@ -1,19 +1,19 @@
 # AUR packaging
 
-The `omarchy-webapp-theme` AUR package. This directory is a straight copy of
+The `omarchy-web-theme` AUR package. This directory is a straight copy of
 what lives in the AUR git repo, so publishing is `cp` + `git push`.
 
 > **Renamed from `omarchy-slack-theme` after 0.2.x**, when the extension grew
 > packs for more sites than Slack. The PKGBUILD carries
 > `replaces/conflicts/provides=('omarchy-slack-theme')` so pacman migrates
-> existing installs, and `omarchy-webapp-theme-setup` cleans up the old name's
+> existing installs, and `omarchy-web-theme-setup` cleans up the old name's
 > per-user wiring. The old AUR package should get a final pinned comment
 > pointing here and then be orphaned/deleted.
 
 ## What the package does and doesn't do
 
 Installs the native-messaging host to `/usr/bin`, the extension and hook to
-`/usr/share/omarchy-webapp-theme`, and native-messaging manifests **system-wide**:
+`/usr/share/omarchy-web-theme`, and native-messaging manifests **system-wide**:
 
 | Path | Covers |
 | --- | --- |
@@ -27,7 +27,7 @@ twelve-directory per-user fan-out that `install.sh` does in a git checkout.
 
 Everything else lives under `$HOME` and so can't come from a package — the
 omarchy `theme-set` hook and the browser `--load-extension` flag. Those are the
-job of `omarchy-webapp-theme-setup`, which is `install.sh` installed under a
+job of `omarchy-web-theme-setup`, which is `install.sh` installed under a
 second name. It detects that it's running packaged by *not* finding the repo
 layout beside itself, and skips the host manifests the package owns.
 
@@ -43,7 +43,7 @@ The checksum can't be computed until the tag is published, so the order matters:
 3. Update the checksum from the now-published archive:
    ```sh
    curl -sSL -o /tmp/v0.3.0.tar.gz \
-     https://github.com/scottjones/omarchy-webapp-theme/archive/refs/tags/v0.3.0.tar.gz
+     https://github.com/skooda/omarchy-web-theme/archive/refs/tags/v0.3.0.tar.gz
    sha256sum /tmp/v0.3.0.tar.gz
    ```
 4. **Regenerate `.SRCINFO`** — the AUR rejects pushes where it disagrees with the
@@ -56,10 +56,10 @@ The checksum can't be computed until the tag is published, so the order matters:
    cd packaging/aur && makepkg --noconfirm --clean
    namcap ./*.pkg.tar.zst
    ```
-6. Copy `PKGBUILD`, `.SRCINFO` and `omarchy-webapp-theme.install` into the AUR
+6. Copy `PKGBUILD`, `.SRCINFO` and `omarchy-web-theme.install` into the AUR
    repo and push (first release under this name creates the package):
    ```sh
-   git clone ssh://aur@aur.archlinux.org/omarchy-webapp-theme.git
+   git clone ssh://aur@aur.archlinux.org/omarchy-web-theme.git
    ```
 
 ## Notes

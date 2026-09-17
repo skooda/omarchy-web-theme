@@ -1,5 +1,5 @@
 #!/bin/bash
-# Wire up the Omarchy Web App Theme extension for the current user: the omarchy
+# Wire up the Omarchy Web Theme extension for the current user: the omarchy
 # theme-set hook, the browser --load-extension flag, and — outside a packaged
 # install — the native-messaging host manifests.
 #
@@ -14,40 +14,47 @@
 # so it's the same on every machine and is baked into the host manifest.
 #
 # This same script ships twice: as ./install.sh in a git checkout, and as
-# /usr/bin/omarchy-webapp-theme-setup in the AUR package. It figures out which it
+# /usr/bin/omarchy-web-theme-setup in the AUR package. It figures out which it
 # is from its own path, so there's only ever one copy of this logic to maintain.
 
 set -euo pipefail
 
 SELF="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
-SHARE_DIR="/usr/share/omarchy-webapp-theme"
+SHARE_DIR="/usr/share/omarchy-web-theme"
 
 REPO="$(dirname -- "$SELF")"
 
 # Decide by what's actually next to us, not by our own filename — a checkout can
 # be cloned to any directory, and the package may be installed at the same time.
-if [[ -f "$REPO/native-host/omarchy-webapp-theme-host" ]]; then
+if [[ -f "$REPO/native-host/omarchy-web-theme-host" ]]; then
   # Git checkout: everything lives beside this script, and we own the per-user
   # native-messaging manifests too since there's no package to place them.
   PACKAGED=0
-  HOST_SCRIPT="$REPO/native-host/omarchy-webapp-theme-host"
-  HOST_TEMPLATE="$REPO/native-host/com.omarchy.webapp_theme.json.template"
-  HOOK_SCRIPT="$REPO/hooks/omarchy-webapp-theme"
+  HOST_SCRIPT="$REPO/native-host/omarchy-web-theme-host"
+  HOST_TEMPLATE="$REPO/native-host/com.omarchy.web_theme.json.template"
+  HOOK_SCRIPT="$REPO/hooks/omarchy-web-theme"
   EXT_DIR="$REPO/extension"
 elif [[ -d $SHARE_DIR ]]; then
   # Packaged: pacman owns the host binary and the system-wide manifests under
   # /etc, so all that's left for us is the per-user wiring.
   PACKAGED=1
-  HOST_SCRIPT="/usr/bin/omarchy-webapp-theme-host"
+  HOST_SCRIPT="/usr/bin/omarchy-web-theme-host"
   HOST_TEMPLATE=""
-  HOOK_SCRIPT="$SHARE_DIR/hooks/omarchy-webapp-theme"
+  HOOK_SCRIPT="$SHARE_DIR/hooks/omarchy-web-theme"
   EXT_DIR="$SHARE_DIR/extension"
 else
   echo "Error: can't find the extension files (looked beside $SELF and in $SHARE_DIR)." >&2
   exit 1
 fi
 
-HOST_NAME="com.omarchy.webapp_theme"
+HOST_NAME="com.omarchy.web_theme"
+
+# Firefox reads its native-messaging manifests from one per-user directory (not
+# per profile), and identifies extensions by the gecko ID from
+# browser_specific_settings.gecko.id — Chrome's "key"-pinned ID and its
+# allowed_origins format are meaningless to it (Firefox needs
+# allowed_extensions, or it silently refuses the connection).
+FIREFOX_HOST_DIR="$HOME/.mozilla/native-messaging-hosts"
 
 # The pinned extension ID, read back from whichever manifest this mode has so
 # it stays single-sourced rather than duplicated here. Purely cosmetic — it's
@@ -62,7 +69,7 @@ ext_id() {
   done
   printf 'the pinned ID'
 }
-MARKER="omarchy-webapp-theme"
+MARKER="omarchy-web-theme"
 
 HOOKS_DIR="$HOME/.config/omarchy/hooks"
 
@@ -150,6 +157,38 @@ install_host_manifests() {
   echo "  native-messaging host registered in $count profile dir(s)"
 }
 
+# The gecko ID, read back from the extension manifest so it stays single-sourced.
+gecko_id() {
+  sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$EXT_DIR/manifest.json" | head -1
+}
+
+# Firefox: one user-level manifest (allowed_extensions, no allowed_origins).
+# Written whenever a Firefox install is around — this is the Firefox side of the
+# "no ID argument, single-sourced" contract.
+install_firefox_host() {
+  local id
+  id=$(gecko_id)
+  [[ -n $id ]] || return 0
+  command -v firefox >/dev/null 2>&1 || [[ -d $HOME/.mozilla ]] || return 0
+  mkdir -p "$FIREFOX_HOST_DIR"
+  cat >"$FIREFOX_HOST_DIR/$HOST_NAME.json" <<EOF
+{
+  "name": "$HOST_NAME",
+  "description": "Omarchy theme reader for the web-app theme browser extension",
+  "path": "$HOST_SCRIPT",
+  "type": "stdio",
+  "allowed_extensions": ["$id"]
+}
+EOF
+  echo "  Firefox native-messaging host registered (allowed_extensions: $id)"
+}
+
+remove_firefox_host() {
+  [[ -f "$FIREFOX_HOST_DIR/$HOST_NAME.json" ]] || return 0
+  rm -f "$FIREFOX_HOST_DIR/$HOST_NAME.json"
+  echo "  removed Firefox native-messaging host manifest"
+}
+
 remove_host_manifests() {
   local dir count=0
   for dir in "${BROWSER_PROFILE_DIRS[@]}"; do
@@ -199,39 +238,50 @@ remove_hook() {
 
 # ------------------------------------------------------- legacy (pre-rename) --
 
-# Through 0.2.x this project was "omarchy-slack-theme". Clean up any wiring the
-# old name left behind so an upgrade doesn't strand a dead host manifest, hook
-# symlink, or --load-extension entry pointing at the old package path.
-OLD_HOST_NAME="com.omarchy.slack_theme"
-OLD_MARKER="omarchy-slack-theme"
-OLD_SHARE_EXT="/usr/share/omarchy-slack-theme/extension"
+# The project has been renamed twice: "omarchy-slack-theme" through 0.2.x, then
+# "omarchy-webapp-theme" through 0.3.x. Clean up any wiring a previous name left
+# behind so an upgrade doesn't strand a dead host manifest, hook symlink, or
+# --load-extension entry pointing at the old package path.
+LEGACY_HOSTS=("com.omarchy.slack_theme" "com.omarchy.webapp_theme")
+LEGACY_MARKERS=("omarchy-slack-theme" "omarchy-webapp-theme")
+LEGACY_SHARE_EXT=(
+  "/usr/share/omarchy-slack-theme/extension"
+  "/usr/share/omarchy-webapp-theme/extension"
+)
 
 remove_legacy() {
   local dir entry name file cleaned=0
+  local host marker ext
   for dir in "${BROWSER_PROFILE_DIRS[@]}"; do
-    [[ -f "$dir/NativeMessagingHosts/$OLD_HOST_NAME.json" ]] || continue
-    rm -f "$dir/NativeMessagingHosts/$OLD_HOST_NAME.json"
-    cleaned=1
+    for host in "${LEGACY_HOSTS[@]}"; do
+      [[ -f "$dir/NativeMessagingHosts/$host.json" ]] || continue
+      rm -f "$dir/NativeMessagingHosts/$host.json"
+      cleaned=1
+    done
   done
-  if [[ -L "$HOOKS_DIR/theme-set.d/$OLD_MARKER" || -f "$HOOKS_DIR/theme-set.d/$OLD_MARKER" ]]; then
-    rm -f "$HOOKS_DIR/theme-set.d/$OLD_MARKER"
-    cleaned=1
-  fi
+  for marker in "${LEGACY_MARKERS[@]}"; do
+    if [[ -L "$HOOKS_DIR/theme-set.d/$marker" || -f "$HOOKS_DIR/theme-set.d/$marker" ]]; then
+      rm -f "$HOOKS_DIR/theme-set.d/$marker"
+      cleaned=1
+    fi
+  done
   for entry in "${FLAGS_TARGETS[@]}"; do
     name="${entry%%:*}"
     file="$HOME/.config/$name-flags.conf"
     [[ -f $file ]] || continue
-    grep -qF "$OLD_SHARE_EXT" "$file" || continue
-    sed -i --follow-symlinks \
-      -e "s|^\(--load-extension=.*\),$OLD_SHARE_EXT\$|\1|" \
-      -e "s|^\(--load-extension=.*\),$OLD_SHARE_EXT,|\1,|" \
-      -e "s|^--load-extension=$OLD_SHARE_EXT,|--load-extension=|" \
-      -e "\|^--load-extension=$OLD_SHARE_EXT\$|d" \
-      "$file"
-    [[ -s $file ]] || rm -f "$file"
-    cleaned=1
+    for ext in "${LEGACY_SHARE_EXT[@]}"; do
+      grep -qF "$ext" "$file" || continue
+      sed -i --follow-symlinks \
+        -e "s|^\(--load-extension=.*\),$ext\$|\1|" \
+        -e "s|^\(--load-extension=.*\),$ext,|\1,|" \
+        -e "s|^--load-extension=$ext,|--load-extension=|" \
+        -e "\|^--load-extension=$ext\$|d" \
+        "$file"
+      [[ -s $file ]] || rm -f "$file"
+      cleaned=1
+    done
   done
-  ((cleaned)) && echo "  cleaned up old omarchy-slack-theme wiring"
+  ((cleaned)) && echo "  cleaned up old install wiring"
   return 0
 }
 
@@ -283,14 +333,15 @@ remove_flags() {
 # --------------------------------------------------------------------- main --
 
 if ((DO_UNINSTALL)); then
-  echo "Uninstalling Omarchy Web App Theme..."
+  echo "Uninstalling Omarchy Web Theme..."
   ((PACKAGED)) || remove_host_manifests
+  remove_firefox_host
   remove_hook
   remove_flags
   remove_legacy
   echo
   if ((PACKAGED)); then
-    echo "Done. Fully restart your browser, then 'pacman -R omarchy-webapp-theme'"
+    echo "Done. Fully restart your browser, then 'pacman -R omarchy-web-theme'"
     echo "to remove the package itself."
   else
     echo "Done. Fully restart your browser to finish."
@@ -317,13 +368,14 @@ for f in "$HOST_SCRIPT" "$HOOK_SCRIPT" ${HOST_TEMPLATE:+"$HOST_TEMPLATE"}; do
 done
 ((PACKAGED)) || chmod +x "$HOST_SCRIPT" "$HOOK_SCRIPT" 2>/dev/null || true
 
-echo "Setting up Omarchy Web App Theme..."
+echo "Setting up Omarchy Web Theme..."
 remove_legacy
 if ((PACKAGED)); then
   echo "  native-messaging host: /etc/chromium/native-messaging-hosts (owned by the package)"
 else
   install_host_manifests
 fi
+install_firefox_host
 install_hook
 if ((DO_FLAGS)); then
   install_flags
@@ -342,4 +394,14 @@ if ((DO_FLAGS)); then
 else
   echo "  2. Load $EXT_DIR unpacked via Developer mode."
 fi
-echo "  3. Open app.slack.com (or web.whatsapp.com, github.com) and switch omarchy themes."
+echo "  3. Open any website and switch omarchy themes."
+
+if command -v firefox >/dev/null 2>&1; then
+  echo
+  echo "Firefox: the native host is wired, but Firefox only loads SIGNED add-ons"
+  echo "on release builds — an unsigned side-load is refused. Use one of:"
+  echo "  - ./dev-firefox.sh (temporary, per session), or"
+  echo "  - ./sign-firefox.sh for the signed self-distributed XPI, or"
+  echo "  - Firefox Developer Edition with xpinstall.signatures.required=false"
+  echo "    for a permanent unsigned install."
+fi

@@ -1,6 +1,6 @@
 {
-  "name": "com.omarchy.webapp_theme",
-  "description": "Omarchy theme reader for the web-app theme browser extension",
+  "name": "com.omarchy.web_theme",
+  "description": "Omarchy theme reader for the Omarchy Web Theme browser extension",
   "path": "__HOST_PATH__",
   "type": "stdio",
   "allowed_origins": [
