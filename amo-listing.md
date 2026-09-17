@@ -86,7 +86,7 @@ collection" in the submission form.
 
 - Homepage: <https://github.com/skooda/omarchy-web-theme>
 - Support site: <https://github.com/skooda/omarchy-web-theme/issues>
-- Support email: `p@v3l.cz`
+- Support email: `addons@v3l.cz`
 
 ## Notes for reviewers
 
