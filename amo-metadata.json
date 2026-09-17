@@ -20,11 +20,9 @@
   "support_email": {
     "en-US": "addons@v3l.cz"
   },
-  "developer_comments": {
-    "en-US": "This is the Firefox build of a Linux desktop tool for Omarchy (https://omarchy.org/). It themes pages from the active Omarchy theme through a companion native-messaging host.\n\nWith no native host present (a stock review environment) the extension installs and injects its content script but does nothing visible — there is no theme to read. background.js calls connectNative(\"com.omarchy.web_theme\") and retries; that is expected.\n\nThe native host is a short, dependency-free bash script; its manifest and setup are install.sh in the repository: https://github.com/skooda/omarchy-web-theme\n\nNo data is collected or transmitted."
-  },
   "version": {
     "license": "MIT",
+    "approval_notes": "This is the Firefox build of a Linux desktop tool for Omarchy (https://omarchy.org/). It themes pages from the active Omarchy theme through a companion native-messaging host.\n\nWith no native host present (a stock review environment) the extension installs and injects its content script but does nothing visible — there is no theme to read. background.js calls connectNative(\"com.omarchy.web_theme\") and retries; that is expected.\n\nThe native host is a short, dependency-free bash script; its manifest and setup are install.sh in the repository: https://github.com/skooda/omarchy-web-theme\n\nNo data is collected or transmitted.",
     "release_notes": {
       "en-US": "0.4.0 — First public release. One site-agnostic recoloring engine replaces the previous per-site packs: palette roles (surfaces/inks/chromatic), hue-preserving color matching, polarity-aware neutrals, a 4.5:1 contrast pass, and instant repaints on theme switches via the Omarchy theme-set hook."
     }
