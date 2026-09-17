@@ -155,30 +155,38 @@ Options:
 > **Load unpacked** first, then restart. It and the `--load-extension` copy share
 > the pinned ID, and only one of the two will load.
 
-### Firefox (self-distributed, signed)
+### Firefox (signed)
 
-Firefox Release refuses unsigned add-ons, so the Firefox build gets signed
-**unlisted**: AMO signs it but never lists it in the marketplace, and the signed
-XPI is handed out from GitHub Releases. `install.sh` already registers the
-Firefox native-messaging host under `~/.mozilla/native-messaging-hosts/`.
+Firefox Release refuses unsigned add-ons, so the Firefox build must be signed by
+AMO. `install.sh` already registers the Firefox native-messaging host under
+`~/.mozilla/native-messaging-hosts/`. There are two channels:
 
 ```sh
-./sign-firefox.sh --package   # builds dist/omarchy-web-theme.xpi (unsigned)
+./sign-firefox.sh --listed     # publish on addons.mozilla.org (AMO updates it)
+./sign-firefox.sh              # unlisted: AMO signs, you self-host the XPI
+./sign-firefox.sh --package    # build dist/omarchy-web-theme.xpi (unsigned)
 ```
 
-1. Create an [AMO account](https://addons.mozilla.org/) and submit that XPI at
-   <https://addons.mozilla.org/developers/addon/submit/on-your-own>, choosing
-   **On your own**. Download the signed `.xpi` AMO returns — that is the file to
-   distribute. (AMO needs this one-time submission to create the add-on; it
-   cannot be created from the API.)
-2. Generate API credentials at
-   <https://addons.mozilla.org/en-US/developers/addon/api/key/>, then
-   `export WEB_EXT_API_KEY=... WEB_EXT_API_SECRET=...` and run
-   `./sign-firefox.sh` — every later version is then built, signed and checksummed
-   in one step.
-3. Attach the signed XPI and the generated `dist/updates.json` to a GitHub
-   Release. The manifest's `gecko.update_url` points at
-   `releases/latest/download/updates.json`, so installed copies auto-update.
+`--listed` is the public listing and is forbidden from carrying a custom
+`update_url` (AMO handles updates). The default `unlisted` build adds
+`gecko.update_url` and emits `dist/updates.json` for self-hosted updates.
+
+**First submission** (either channel) goes through the web UI — AMO cannot create
+an MV3 add-on from the API, only new versions:
+
+- listed: <https://addons.mozilla.org/developers/addon/submit/> → **On this site**
+- unlisted: <https://addons.mozilla.org/developers/addon/submit/on-your-own> →
+  **On your own**
+
+Upload `dist/omarchy-web-theme.xpi`, fill the listing (copy-paste text is in
+[`amo-listing.md`](./amo-listing.md)), and submit. Then generate API credentials
+at <https://addons.mozilla.org/en-US/developers/addon/api/key/>, `export
+WEB_EXT_API_KEY=... WEB_EXT_API_SECRET=...`, and every later version is one
+`./sign-firefox.sh [--listed]`.
+
+For **unlisted**, attach the signed XPI and `dist/updates.json` to a GitHub
+Release so `releases/latest/download/updates.json` resolves. For **listed**, AMO
+serves updates itself — no release assets needed.
 
 To develop without signing, use `./dev-firefox.sh` or
 `about:debugging → Load Temporary Add-on` on the `build/firefox` directory.

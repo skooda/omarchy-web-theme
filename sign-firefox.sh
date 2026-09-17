@@ -1,30 +1,37 @@
 #!/bin/bash
-# Build, package, and — with AMO API credentials — sign the Firefox add-on as an
-# UNLISTED (self-distributed) add-on.
+# Build, package, and (with AMO API credentials) sign the Firefox add-on.
 #
-# "Unlisted" means AMO signs it but never publishes it: it is not searchable in
-# the marketplace and you host the XPI yourself. That is what lets a normal
-# (non-Developer-Edition) Firefox install it permanently without the extension
-# ever appearing on addons.mozilla.org.
+# Two AMO channels:
+#   unlisted (default) — AMO signs it but never lists it; you host the XPI and
+#                        its updates.json yourself. Works on stock Firefox.
+#   listed             — published on addons.mozilla.org and updated by AMO.
 #
-# One-time setup:
-#   1. Create an AMO account:            https://addons.mozilla.org/
-#   2. Create the add-on:                https://addons.mozilla.org/developers/addon/submit/on-your-own
-#      Upload the UNSIGNED XPI this script writes to dist/ and choose
-#      "On your own" (self-distributed). AMO reads the gecko id from the
-#      manifest, so it becomes the same id the native host allows.
-#      (web-ext cannot create an MV3 add-on itself — only submit new versions.)
-#   3. Generate API keys:                https://addons.mozilla.org/en-US/developers/addon/api/key/
+# The channel changes what AMO accepts: a custom `gecko.update_url` is forbidden
+# on listed add-ons (MANIFEST_UPDATE_URL), so `--listed` drops it and relies on
+# AMO for updates; `unlisted` keeps the self-hosted updates.json.
+#
+# One-time setup (both channels):
+#   1. Create an AMO account:  https://addons.mozilla.org/
+#   2. Create the add-on once through the web UI (web-ext cannot create an MV3
+#      add-on itself, only submit new versions):
+#        unlisted: https://addons.mozilla.org/developers/addon/submit/on-your-own
+#        listed:   https://addons.mozilla.org/developers/addon/submit/
+#      Upload the UNSIGNED XPI this script writes to dist/ and finish the form.
+#      AMO reads the gecko id from the manifest, so it matches the native host.
+#   3. Generate API keys:  https://addons.mozilla.org/en-US/developers/addon/api/key/
 #      export WEB_EXT_API_KEY=... WEB_EXT_API_SECRET=...
 #
 # Usage:
-#   ./sign-firefox.sh            # rebuild, package, sign (keys required)
-#   ./sign-firefox.sh --package  # build + package only, no keys needed
+#   ./sign-firefox.sh              # unlisted: build, package, sign, updates.json
+#   ./sign-firefox.sh --listed     # listed:   build, package, sign (AMO updates)
+#   ./sign-firefox.sh --package    # build + package only, no keys needed
 #
 # Env:
 #   WEB_EXT_API_KEY, WEB_EXT_API_SECRET   AMO credentials (required to sign)
-#   FX_UPDATE_URL   override the self-hosted updates.json URL
+#   FX_UPDATE_URL   unlisted only: override the self-hosted updates.json URL
 #                   (default: <repo>/releases/latest/download/updates.json)
+#   FX_APPROVAL_TIMEOUT   ms to wait for review before giving up (listed; 0
+#                         submits without waiting). Default: web-ext's.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -32,12 +39,29 @@ cd "$(dirname "$0")"
 REPO_SLUG="skooda/omarchy-web-theme"
 ASSET_NAME="omarchy-web-theme.xpi"
 DEFAULT_UPDATE_URL="https://github.com/${REPO_SLUG}/releases/latest/download/updates.json"
-# `-` (not `:-`) so an explicitly empty FX_UPDATE_URL disables self-hosted
-# updates — needed if AMO ever rejects a submission with MANIFEST_UPDATE_URL.
-FX_UPDATE_URL="${FX_UPDATE_URL-$DEFAULT_UPDATE_URL}"
 
+CHANNEL="unlisted"
 PACKAGE_ONLY=0
-[[ "${1:-}" == "--package" ]] && PACKAGE_ONLY=1
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --listed) CHANNEL="listed" ;;
+    --unlisted) CHANNEL="unlisted" ;;
+    --package) PACKAGE_ONLY=1 ;;
+    *)
+      echo "Usage: $0 [--listed|--unlisted] [--package]" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+# AMO forbids update_url on listed add-ons; there it also owns updates. `-` (not
+# `:-`) so `FX_UPDATE_URL=` can force it off for unlisted too.
+if [[ $CHANNEL == listed ]]; then
+  FX_UPDATE_URL=""
+else
+  FX_UPDATE_URL="${FX_UPDATE_URL-$DEFAULT_UPDATE_URL}"
+fi
 
 VERSION=$(python3 -c 'import json;print(json.load(open("extension/manifest.json"))["version"])')
 ADDON_ID=$(python3 -c 'import json;print(json.load(open("extension/manifest.json"))["browser_specific_settings"]["gecko"]["id"])')
@@ -50,14 +74,20 @@ rm -rf "$BUILD_DIR" "$SIGN_DIR"
 mkdir -p "$DIST_DIR"
 FX_UPDATE_URL="$FX_UPDATE_URL" ./build-firefox.sh "$BUILD_DIR" >/dev/null
 
-# Lint as self-hosted: that is how AMO validates an unlisted submission, and it
-# is the only mode in which a custom update_url is allowed. Plain `web-ext lint`
-# would flag our update_url as a MANIFEST_UPDATE_URL error.
-echo "Validating (self-hosted)..."
-npx --yes web-ext lint --self-hosted --source-dir "$BUILD_DIR" --output text 2>&1 | tail -20
+# Self-hosted lint only when we actually ship a self-hosted update_url — that is
+# the mode AMO uses to validate an unlisted submission. A listed build has no
+# update_url and must pass the plain (Mozilla-hosted) lint instead.
+if [[ $CHANNEL == listed ]]; then
+  echo "Validating (listed / Mozilla-hosted)..."
+  LINT_ARGS=()
+else
+  echo "Validating (unlisted / self-hosted)..."
+  LINT_ARGS=(--self-hosted)
+fi
+npx --yes web-ext lint "${LINT_ARGS[@]}" --source-dir "$BUILD_DIR" --output text 2>&1 | tail -20
 
-# Package the unsigned XPI. Needed for the one-time AMO submission above, and
-# it is what gets replaced by the signed artifact below.
+# Package the unsigned XPI. Needed for the one-time web submission, and it is
+# what gets replaced by the signed artifact below.
 UNSIGNED="$DIST_DIR/$ASSET_NAME"
 ABS_UNSIGNED="$PWD/$UNSIGNED"
 rm -f "$UNSIGNED"
@@ -65,37 +95,65 @@ rm -f "$UNSIGNED"
 echo "Unsigned XPI: $UNSIGNED"
 
 if ((PACKAGE_ONLY)) || [[ -z "${WEB_EXT_API_KEY:-}" || -z "${WEB_EXT_API_SECRET:-}" ]]; then
+  if [[ $CHANNEL == listed ]]; then
+    SUBMIT_URL="https://addons.mozilla.org/developers/addon/submit/"
+    SUBMIT_CHOICE="On this site"
+  else
+    SUBMIT_URL="https://addons.mozilla.org/developers/addon/submit/on-your-own"
+    SUBMIT_CHOICE="On your own"
+  fi
   cat <<EOF
 
 No AMO credentials (WEB_EXT_API_KEY / WEB_EXT_API_SECRET) set — packaged only.
 
-First release:
+First release ($CHANNEL):
   1. Submit  $UNSIGNED  at
-     https://addons.mozilla.org/developers/addon/submit/on-your-own
-     choosing "On your own". Download the SIGNED .xpi AMO gives you.
-  2. Re-run this script with the API keys exported to automate further versions.
-  3. Publish $DIST_DIR/$ASSET_NAME and $DIST_DIR/updates.json as release assets so
-     the update_url resolves (see the gh command this script prints when signing).
+     $SUBMIT_URL
+     choosing "$SUBMIT_CHOICE". Fill in the listing from amo-listing.md, then
+     submit for review.
+  2. Export the API keys and re-run to automate further versions.
 EOF
   exit 0
 fi
 
-mkdir -p "$SIGN_DIR"
-echo "Signing $ADDON_ID $VERSION as unlisted..."
-npx --yes web-ext sign \
-  --channel unlisted \
-  --source-dir "$BUILD_DIR" \
-  --artifacts-dir "$SIGN_DIR" \
-  --api-key "$WEB_EXT_API_KEY" \
+SIGN_ARGS=(
+  --channel "$CHANNEL"
+  --source-dir "$BUILD_DIR"
+  --artifacts-dir "$SIGN_DIR"
+  --api-key "$WEB_EXT_API_KEY"
   --api-secret "$WEB_EXT_API_SECRET"
+)
+[[ -n "${FX_APPROVAL_TIMEOUT:-}" ]] && SIGN_ARGS+=(--approval-timeout "$FX_APPROVAL_TIMEOUT")
+
+mkdir -p "$SIGN_DIR"
+echo "Signing $ADDON_ID $VERSION as $CHANNEL..."
+if ! npx --yes web-ext sign "${SIGN_ARGS[@]}"; then
+  if [[ $CHANNEL == listed ]]; then
+    echo
+    echo "Submitted, but not signed yet — a listed version waits for AMO review." >&2
+    echo "Track it at https://addons.mozilla.org/developers/addons/ ; the signed" >&2
+    echo "XPI downloads there when review passes (re-run with" >&2
+    echo "FX_APPROVAL_TIMEOUT=0 to submit without waiting)." >&2
+    exit 0
+  fi
+  exit 1
+fi
 
 SIGNED=$(ls -t "$SIGN_DIR"/*.xpi 2>/dev/null | head -1 || true)
 [[ -n "$SIGNED" ]] || { echo "No signed XPI produced." >&2; exit 1; }
 cp -f "$SIGNED" "$UNSIGNED"
 
-# Self-hosted update manifest. update_hash is verified by Firefox after the
-# download, and the update_link uses release/latest/download/ so both URLs stay
-# stable across versions — only this file's contents change.
+echo
+echo "Signed XPI: $UNSIGNED"
+
+if [[ $CHANNEL == listed ]]; then
+  echo "Listed on AMO, updated by AMO automatically. No release assets needed."
+  exit 0
+fi
+
+# Self-hosted update manifest (unlisted only). update_hash is verified by
+# Firefox after the download, and update_link uses release/latest/download/ so
+# both URLs stay stable across versions — only this file's contents change.
 HASH=$(sha256sum "$UNSIGNED" | cut -d' ' -f1)
 LINK="https://github.com/${REPO_SLUG}/releases/latest/download/${ASSET_NAME}"
 cat >"$DIST_DIR/updates.json" <<EOF
@@ -114,8 +172,6 @@ cat >"$DIST_DIR/updates.json" <<EOF
 }
 EOF
 
-echo
-echo "Signed XPI: $UNSIGNED"
 echo "Updates:    $DIST_DIR/updates.json   (update_url: $FX_UPDATE_URL)"
 echo
 echo "Publish (must not be a draft/prerelease, or /latest/ won't resolve):"

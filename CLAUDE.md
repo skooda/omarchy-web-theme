@@ -120,15 +120,20 @@ need entirely. Consequences to preserve when editing:
 for event-page `background.scripts`, drops the Chrome `key`, and adds
 `data_collection_permissions` (AMO requires it). `FX_UPDATE_URL` adds
 `browser_specific_settings.gecko.update_url` for self-hosted updates.
-`sign-firefox.sh` builds, runs `web-ext lint --self-hosted`, signs as **unlisted**
-(`--channel unlisted`), and writes `dist/updates.json`. Unlisted add-ons cannot
-create themselves via the API (MV3) — the first submission is done once through
-the AMO web UI; the script's `--package` mode produces the XPI for that.
 
-A custom `update_url` is only valid in the **self-hosted** linter mode; plain
-`web-ext lint` reports it as `MANIFEST_UPDATE_URL`. If AMO ever rejects a
-submission with that error, build with `FX_UPDATE_URL= ` (empty) and ship without
-self-hosted updates.
+`sign-firefox.sh` has two channels. Default **unlisted** builds with
+`FX_UPDATE_URL`, lints `--self-hosted`, signs `--channel unlisted`, and writes
+`dist/updates.json` (self-hosted auto-updates). `--listed` drops `update_url`
+(AMO forbids it on listed add-ons and serves updates itself), lints plain, and
+signs `--channel listed` — a listed version then waits for AMO review, so the
+script tolerates a timeout and points at the dev hub. A custom `update_url` is
+only valid in the **self-hosted** linter mode; plain `web-ext lint` reports it as
+`MANIFEST_UPDATE_URL`.
+
+AMO cannot create an MV3 add-on from the API (only new versions), so the first
+submission of either channel goes through the AMO web UI —
+`sign-firefox.sh --package [--listed]` produces the XPI, and `amo-listing.md`
+holds the paste-ready listing copy.
 
 ## Dev / test workflow
 
