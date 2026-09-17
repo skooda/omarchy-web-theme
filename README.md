@@ -272,4 +272,4 @@ packaging/aur/                       # PKGBUILD for the Arch package
 ## License
 
 MIT — see [LICENSE](./LICENSE). Original work © 2026 Scott Jones; universal
-engine and fork © 2026 Pavel Škoda.
+engine and fork © 2026 V3L (V3L.cz).
