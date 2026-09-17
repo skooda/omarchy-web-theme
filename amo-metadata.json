@@ -1,0 +1,32 @@
+{
+  "name": {
+    "en-US": "Omarchy Web Theme"
+  },
+  "summary": {
+    "en-US": "Make any website follow your Omarchy theme: palette, light/dark, and accent. Requires Omarchy 4+ on Linux and a small companion native host."
+  },
+  "description": {
+    "en-US": "Omarchy Web Theme recolors the web to match your current [Omarchy](https://omarchy.org/) theme, so pages blend into the rest of your desktop instead of fighting it.\n\n- **Any site, one engine.** Backgrounds, borders and shadows are drawn from the theme's surfaces; text, icons and links from its inks. Saturated colors (links, buttons, status) keep their hue by matching the theme's chromatic slots.\n- **Readable by construction.** Every mapped pair is checked and repaired to at least 4.5:1 (WCAG AA), preferring the theme's own colors over literal black/white.\n- **Follows light/dark.** Switching Omarchy themes repaints open tabs immediately: a small native-messaging host is signalled by Omarchy's own `theme-set` hook.\n- **Role-aware.** A page's background stays a background and its text stays text, even when the site's own light/dark mode disagrees with the theme.\n\n### Requirements\n\n- **Omarchy 4+ on Arch Linux.** The extension reads the active theme from `~/.local/state/omarchy/current/` through a companion native-messaging host.\n- The **native host**, installed by this project's installer or the `omarchy-web-theme` AUR package (`omarchy-web-theme-setup`).\n\nWithout Omarchy and the native host the extension installs and injects cleanly, but has no theme to read and does nothing.\n\n### Install\n\n```sh\nyay -S omarchy-web-theme      # native host + extension\nomarchy-web-theme-setup       # per-user hook + browser wiring\n```\n\nThen fully quit and restart Firefox. Full source and setup instructions: <https://github.com/skooda/omarchy-web-theme>\n\n### Privacy\n\nThe extension collects nothing and sends nothing. It reads your local theme through the native host and makes no network requests of its own."
+  },
+  "categories": {
+    "firefox": ["appearance", "other"]
+  },
+  "homepage": {
+    "en-US": "https://github.com/skooda/omarchy-web-theme"
+  },
+  "support_url": {
+    "en-US": "https://github.com/skooda/omarchy-web-theme/issues"
+  },
+  "support_email": {
+    "en-US": "p@v3l.cz"
+  },
+  "developer_comments": {
+    "en-US": "This is the Firefox build of a Linux desktop tool for Omarchy (https://omarchy.org/). It themes pages from the active Omarchy theme through a companion native-messaging host.\n\nWith no native host present (a stock review environment) the extension installs and injects its content script but does nothing visible — there is no theme to read. background.js calls connectNative(\"com.omarchy.web_theme\") and retries; that is expected.\n\nThe native host is a short, dependency-free bash script; its manifest and setup are install.sh in the repository: https://github.com/skooda/omarchy-web-theme\n\nNo data is collected or transmitted."
+  },
+  "version": {
+    "license": "MIT",
+    "release_notes": {
+      "en-US": "0.4.0 — First public release. One site-agnostic recoloring engine replaces the previous per-site packs: palette roles (surfaces/inks/chromatic), hue-preserving color matching, polarity-aware neutrals, a 4.5:1 contrast pass, and instant repaints on theme switches via the Omarchy theme-set hook."
+    }
+  }
+}

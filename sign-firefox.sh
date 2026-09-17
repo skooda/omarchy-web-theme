@@ -124,6 +124,10 @@ SIGN_ARGS=(
   --api-secret "$WEB_EXT_API_SECRET"
 )
 [[ -n "${FX_APPROVAL_TIMEOUT:-}" ]] && SIGN_ARGS+=(--approval-timeout "$FX_APPROVAL_TIMEOUT")
+# The API's PUT /addons/addon/{guid}/ creates the add-on when the guid is new, so
+# a listed add-on can be created and submitted in one shot — but only with the
+# required listing metadata (name, summary, categories, version license).
+[[ -n "${FX_AMO_METADATA:-}" ]] && SIGN_ARGS+=(--amo-metadata "$FX_AMO_METADATA")
 
 mkdir -p "$SIGN_DIR"
 echo "Signing $ADDON_ID $VERSION as $CHANNEL..."
@@ -140,7 +144,17 @@ if ! npx --yes web-ext sign "${SIGN_ARGS[@]}"; then
 fi
 
 SIGNED=$(ls -t "$SIGN_DIR"/*.xpi 2>/dev/null | head -1 || true)
-[[ -n "$SIGNED" ]] || { echo "No signed XPI produced." >&2; exit 1; }
+if [[ -z "$SIGNED" ]]; then
+  if [[ $CHANNEL == listed ]]; then
+    echo
+    echo "Submitted — a listed version waits for AMO review before it is signed." >&2
+    echo "Build and serve nothing: AMO lists and updates it. Track review at" >&2
+    echo "https://addons.mozilla.org/developers/addons/" >&2
+    exit 0
+  fi
+  echo "No signed XPI produced." >&2
+  exit 1
+fi
 cp -f "$SIGNED" "$UNSIGNED"
 
 echo
